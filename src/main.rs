@@ -28,7 +28,7 @@ fn main() -> anyhow::Result<()> {
     let capture = std::env::var_os("POINTRILL_SCREENSHOT").map(std::path::PathBuf::from);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1190.0, 805.0])
+            .with_inner_size([1260.0, 800.0])
             .with_min_inner_size([820.0, 580.0])
             .with_app_id("io.github.ashrynsilkstone_ui.Pointrill"),
         ..Default::default()

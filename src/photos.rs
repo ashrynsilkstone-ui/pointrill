@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, ensure};
 use eframe::egui::ColorImage;
-use image::{ImageReader, Limits};
+use image::{ImageReader, Limits, RgbaImage};
 use reqwest::{Url, blocking::Client, redirect::Policy};
 use sha2::{Digest, Sha256};
 
@@ -159,10 +159,28 @@ fn decode(bytes: &[u8]) -> Result<ColorImage> {
         .context("Bildformat konnte nicht gelesen werden")?
         .thumbnail(760, 760)
         .to_rgba8();
+    let pixels = trim_transparent_padding(pixels);
     Ok(ColorImage::from_rgba_unmultiplied(
         [pixels.width() as usize, pixels.height() as usize],
         pixels.as_raw(),
     ))
+}
+
+fn trim_transparent_padding(pixels: RgbaImage) -> RgbaImage {
+    let (width, height) = pixels.dimensions();
+    let (mut left, mut top, mut right, mut bottom) = (width, height, 0, 0);
+    for (x, y, pixel) in pixels.enumerate_pixels() {
+        if pixel[3] != 0 {
+            left = left.min(x);
+            top = top.min(y);
+            right = right.max(x + 1);
+            bottom = bottom.max(y + 1);
+        }
+    }
+    if left >= right || top >= bottom || (right - left == width && bottom - top == height) {
+        return pixels;
+    }
+    image::imageops::crop_imm(&pixels, left, top, right - left, bottom - top).to_image()
 }
 
 fn cache_path(source: &str) -> Option<PathBuf> {
