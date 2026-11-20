@@ -1,6 +1,7 @@
 mod bus;
 mod hid;
 mod model;
+mod photos;
 mod ui;
 mod worker;
 

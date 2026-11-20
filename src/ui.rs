@@ -8,6 +8,7 @@ use eframe::egui::{
 use crate::model::{
     Control, Device, Dpi, Field, Key, Page, Snapshot, Status, Value, draft_changes, has_free_spin,
 };
+use crate::photos::Loader;
 use crate::worker::{Reply, Request, Worker};
 
 const BASE: Color = Color::from_rgb(12, 15, 24);
@@ -39,8 +40,17 @@ pub struct App {
     confirm: Option<Pending>,
     closing: bool,
     ready_to_close: bool,
-    mouse_art: Option<egui::TextureHandle>,
+    photos: Loader,
+    photo_url: Option<String>,
+    picture: ProductPicture,
     capture: Option<(PathBuf, Instant)>,
+}
+
+enum ProductPicture {
+    Missing,
+    Loading,
+    Ready(egui::TextureHandle),
+    Failed(String),
 }
 
 enum Pending {
@@ -54,17 +64,8 @@ impl App {
         theme(context);
         let repaint = context.clone();
         let worker = Worker::start(move || repaint.request_repaint());
-        let mouse_art = image::load_from_memory(include_bytes!("../assets/basilisk.webp"))
-            .ok()
-            .map(|image| {
-                let pixels = image.to_rgba8();
-                let size = [pixels.width() as usize, pixels.height() as usize];
-                context.load_texture(
-                    "Basilisk device render",
-                    egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_raw()),
-                    egui::TextureOptions::LINEAR,
-                )
-            });
+        let repaint = context.clone();
+        let photos = Loader::start(move || repaint.request_repaint());
         Self {
             worker,
             devices: vec![],
@@ -82,7 +83,9 @@ impl App {
             confirm: None,
             closing: false,
             ready_to_close: false,
-            mouse_art,
+            photos,
+            photo_url: None,
+            picture: ProductPicture::Missing,
             capture: capture.map(|path| (path, Instant::now() + Duration::from_millis(1400))),
         }
     }
@@ -119,6 +122,7 @@ impl App {
         if !same {
             self.status = Status::default();
         }
+        self.set_photo(snapshot.product_image.clone());
         self.snapshot = Some(snapshot);
         if !self.has_page(self.page) {
             self.page = Page::ALL
@@ -129,6 +133,41 @@ impl App {
         self.preview_sent = None;
         self.preview_deadline = None;
         self.next_scan = Instant::now();
+    }
+
+    fn set_photo(&mut self, url: Option<String>) {
+        if self.photo_url != url {
+            self.photo_url = url;
+            self.request_photo();
+        }
+    }
+
+    fn request_photo(&mut self) {
+        self.picture = if let Some(url) = &self.photo_url {
+            if self.photos.requests.send(url.clone()).is_ok() {
+                ProductPicture::Loading
+            } else {
+                ProductPicture::Failed("Der Bildabruf ist nicht erreichbar.".into())
+            }
+        } else {
+            ProductPicture::Missing
+        };
+    }
+
+    fn read_photos(&mut self, context: &egui::Context) {
+        while let Ok((url, result)) = self.photos.replies.try_recv() {
+            if self.photo_url.as_ref() != Some(&url) {
+                continue;
+            }
+            self.picture = match result {
+                Ok(photo) => ProductPicture::Ready(context.load_texture(
+                    url,
+                    photo,
+                    egui::TextureOptions::LINEAR,
+                )),
+                Err(error) => ProductPicture::Failed(format!("{error:#}")),
+            };
+        }
     }
 
     fn read_replies(&mut self, context: &egui::Context) {
@@ -146,6 +185,7 @@ impl App {
                             let current = self.snapshot.as_ref().map(|view| &view.device);
                             if self.devices.is_empty() {
                                 self.snapshot = None;
+                                self.set_photo(None);
                                 self.draft.clear();
                                 self.notify("Warte auf eine Maus oder einen Empfänger.", false);
                             } else if current != selected.as_ref() || current.is_none() {
@@ -447,103 +487,87 @@ impl App {
         }
     }
 
-    fn device_view(&self, ui: &mut Ui) {
+    fn device_view(&mut self, ui: &mut Ui) {
         let Some(snapshot) = &self.snapshot else {
             return;
         };
         let mut accent = VIOLET;
-        let mut zone = "" as &str;
         if self.page == Page::Lights
-            && let Some((Key::Light(light), Value::Light { effect, color, .. })) = self
+            && let Some((_, Value::Light { effect, color, .. })) = self
                 .changes()
                 .into_iter()
                 .rev()
                 .find(|(key, _)| matches!(key, Key::Light(_)))
+            && effect.is_some_and(|effect| effect.color())
         {
-            zone = light.id;
-            if effect.is_some_and(|effect| effect.color()) {
-                accent = Color::from_rgb(color[0], color[1], color[2]);
-            }
+            accent = Color::from_rgb(color[0], color[1], color[2]);
         }
+        let caption = match self.page {
+            Page::Wheel if snapshot.device.basilisk() => "Umschalten über die belegte Maustaste",
+            Page::Lights => "Entwurf der Beleuchtung",
+            Page::Receiver => "Statusanzeigen des Empfängers",
+            _ => snapshot.device.connection(),
+        }
+        .to_owned();
+        let mut retry = false;
         tile(RAIL).show(ui, |ui| {
-            ui.label(
-                Text::new("GERÄTEVORSCHAU")
-                    .size(12.0)
-                    .monospace()
-                    .color(MUTED),
-            );
+            ui.label(Text::new("PRODUKTBILD").size(12.0).monospace().color(MUTED));
             let width = ui.available_width();
             let height = (width * 0.93).clamp(180.0, 348.0);
-            let (area, _) = ui.allocate_exact_size(vec2(width, height), egui::Sense::hover());
+            let (area, response) =
+                ui.allocate_exact_size(vec2(width, height), egui::Sense::hover());
             let painter = ui.painter_at(area);
             let center = area.center();
-            let radius = (height * 0.41).min(width * 0.43);
-            for i in (0u8..23).rev() {
-                let fraction = f32::from(i) / 22.0;
-                painter.circle_filled(
-                    center,
-                    radius * (0.4 + fraction),
-                    Color::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 3),
-                );
-            }
-            for size in [0.78, 1.0] {
+            if let ProductPicture::Ready(texture) = &self.picture {
+                let radius = (height * 0.38).min(width * 0.43);
+                for i in (0u8..20).rev() {
+                    let fraction = f32::from(i) / 19.0;
+                    painter.circle_filled(
+                        center,
+                        radius * (0.45 + fraction),
+                        Color::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 3),
+                    );
+                }
                 painter.circle_stroke(
                     center,
-                    radius * size,
-                    Stroke::new(
-                        1.0,
-                        Color::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 52),
-                    ),
+                    radius,
+                    Stroke::new(1.0, accent.gamma_multiply(0.28)),
                 );
-            }
-            painter.line_segment(
-                [area.left_center(), area.right_center()],
-                Stroke::new(1.0, LINE),
-            );
-            painter.line_segment(
-                [area.center_top(), area.center_bottom()],
-                Stroke::new(1.0, LINE),
-            );
-            if snapshot.device.basilisk()
-                && let Some(model) = &self.mouse_art
-            {
-                let image_height = height * 1.04;
-                let photo =
-                    Rect::from_center_size(center, vec2(image_height * 5.0 / 6.0, image_height));
+                let size = texture.size_vec2();
+                let fit = ((area.width() - 10.0) / size.x).min((area.height() - 10.0) / size.y);
+                let photo = Rect::from_center_size(center, size * fit.max(0.0));
                 painter.image(
-                    model.id(),
+                    texture.id(),
                     photo,
                     Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
                     Color::WHITE,
                 );
-                let focus = match (self.page, zone) {
-                    (Page::Wheel, _) => Some((0.218, 0.5073)),
-                    (Page::Lights, "logo") => Some((0.6723, 0.5718)),
-                    (Page::Lights, "scroll") => Some((0.3168, 0.2406)),
-                    (Page::Lights, "backlight") => Some((0.7411, 0.8368)),
-                    _ => None,
-                };
-                if let Some((x, y)) = focus {
-                    let center = Pos2::new(
-                        photo.left() + x * photo.width(),
-                        photo.top() + y * photo.height(),
-                    );
-                    painter.circle(center, 8.0, BASE, Stroke::new(2.0, accent));
-                    painter.circle_filled(center, 3.4, accent);
-                }
             } else {
-                device_symbol(&painter, center, self.page == Page::Receiver, accent);
+                let status = match &self.picture {
+                    ProductPicture::Missing => "Kein Produktbild verfügbar",
+                    ProductPicture::Loading => "Produktbild wird geladen …",
+                    ProductPicture::Failed(_) => "Produktbild derzeit nicht erreichbar",
+                    ProductPicture::Ready(_) => unreachable!(),
+                };
+                painter.text(
+                    center,
+                    egui::Align2::CENTER_CENTER,
+                    status,
+                    FontId::proportional(13.0),
+                    MUTED,
+                );
             }
-            let caption = match self.page {
-                Page::Wheel if snapshot.device.basilisk() => {
-                    "Umschalten über die belegte Maustaste"
+            ui.horizontal_wrapped(|ui| {
+                ui.label(Text::new(&caption).color(MUTED).size(12.0));
+                if let ProductPicture::Failed(error) = &self.picture {
+                    response.on_hover_text(error);
+                    retry = ui.small_button("Erneut versuchen").clicked();
                 }
-                Page::Lights => "Entwurf der Beleuchtung",
-                Page::Receiver => "Statusanzeigen des Empfängers",
-                _ => snapshot.device.connection(),
-            };
-            ui.label(Text::new(caption).color(MUTED).size(12.0));
+            });
         });
+        if retry {
+            self.request_photo();
+        }
     }
 
     fn footer(&mut self, ui: &mut Ui) {
@@ -602,6 +626,7 @@ impl App {
 impl eframe::App for App {
     fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
         self.read_replies(context);
+        self.read_photos(context);
         if context.input(|input| input.viewport().close_requested()) && !self.ready_to_close {
             context.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             if !self.busy && self.confirm.is_none() && !self.closing {
@@ -678,6 +703,7 @@ impl eframe::App for App {
             .as_ref()
             .is_some_and(|(_, when)| *when <= Instant::now())
             && self.snapshot.is_some()
+            && !matches!(self.picture, ProductPicture::Loading)
             && let Some((path, _)) = self.capture.take()
         {
             ui.ctx().request_screenshot(move |frame| {
@@ -998,47 +1024,4 @@ fn logo(painter: &egui::Painter, rect: Rect) {
         Stroke::new(3.0, VIOLET),
     );
     painter.circle_filled(center + vec2(0.0, 4.0), 2.6, ACID);
-}
-
-fn device_symbol(painter: &egui::Painter, center: Pos2, receiver: bool, accent: Color) {
-    if receiver {
-        painter.rect(
-            Rect::from_center_size(center, vec2(86.0, 63.0)),
-            15.0,
-            PANEL,
-            Stroke::new(2.0, accent),
-            egui::StrokeKind::Inside,
-        );
-        painter.rect(
-            Rect::from_center_size(center + vec2(0.0, -43.0), vec2(43.0, 22.0)),
-            5.0,
-            FIELD,
-            Stroke::new(1.0, accent),
-            egui::StrokeKind::Inside,
-        );
-        for x in [-15.0, 0.0, 15.0] {
-            painter.circle_filled(center + vec2(x, 10.0), 3.0, accent);
-        }
-    } else {
-        painter.rect(
-            Rect::from_center_size(center, vec2(98.0, 160.0)),
-            43.0,
-            PANEL,
-            Stroke::new(2.0, accent),
-            egui::StrokeKind::Inside,
-        );
-        painter.line_segment(
-            [center + vec2(-49.0, -22.0), center + vec2(49.0, -22.0)],
-            Stroke::new(1.0, LINE),
-        );
-        painter.line_segment(
-            [center + vec2(0.0, -80.0), center + vec2(0.0, -22.0)],
-            Stroke::new(1.0, LINE),
-        );
-        painter.rect_filled(
-            Rect::from_center_size(center + vec2(0.0, -52.0), vec2(12.0, 33.0)),
-            6.0,
-            accent,
-        );
-    }
 }

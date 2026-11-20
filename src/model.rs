@@ -2,9 +2,9 @@ use anyhow::{Result, bail, ensure};
 
 pub type Dpi = (u16, u16);
 pub const CYCLES: [(i32, &str); 4] = [
-    (5, "24 ↔ 48 Rastpunkte"),
-    (3, "24 ↔ Freilauf"),
-    (6, "48 ↔ Freilauf"),
+    (5, "24 und 48 Rastpunkte"),
+    (3, "24 und Freilauf"),
+    (6, "48 und Freilauf"),
     (7, "Alle drei Modi"),
 ];
 
@@ -397,6 +397,7 @@ pub struct Snapshot {
     pub device: Device,
     pub fields: Vec<Field>,
     pub volatile_dpi: bool,
+    pub product_image: Option<String>,
 }
 
 pub fn has_free_spin(value: &Value) -> bool {
