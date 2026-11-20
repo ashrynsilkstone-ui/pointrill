@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-Pointrill ist eine Qt-App für Mäuse und Empfänger unter OpenRazer. Sie erkennt Geräte beim Start und beim Anschließen. Pro Gerät zeigt sie die Einstellungen an, die der jeweilige OpenRazer-Treiber bereitstellt.
+Pointrill ist eine native Rust-App für Mäuse und Empfänger unter OpenRazer. Sie erkennt Geräte beim Start und beim Anschließen. Pro Gerät zeigt sie die Einstellungen an, die der jeweilige OpenRazer-Treiber bereitstellt.
 
 ![Pointrills Sensor-Reiter mit einer Basilisk V4 Pro](docs/sensor.png)
 
@@ -21,13 +21,14 @@ Erst **Übernehmen** schreibt den Entwurf über die Speicherbefehle des Geräts 
 
 ## Start unter Linux
 
-Installiere den OpenRazer-Treiber, Daemon und Python-Client für deine Distribution sowie die Python-D-Bus-Bindings und PySide6. Starte OpenRazer in deiner Desktop-Sitzung und führe im Projektordner aus.
+Du brauchst Rust ab Version 1.95, eine Wayland- oder X11-Sitzung mit OpenGL und den OpenRazer-Treiber samt Daemon für deine Distribution. Starte OpenRazer in deiner Desktop-Sitzung und führe im Projektordner aus.
 
 ```sh
-python -m pointrill
+cargo run --locked --release
 ```
 
-Nach einer Installation mit `python -m pip install .` steht auch der Befehl `pointrill` zur Verfügung. Wenn OpenRazer und D-Bus aus dem Paketmanager kommen, nutze eine virtuelle Umgebung mit Zugriff auf die Systempakete.
+Die aktive DPI-Stufe und die Pollingrate wählst du über direkte Tasten. Klick auf einen DPI-Wert, um ihn einzugeben, oder ziehe ihn, um ihn zu ändern. Mit `cargo run --locked -- --probe` listest du erkannte Geräte und ihre verfügbaren Einstellungen auf.
+
 
 Die flüchtige DPI-Vorschau und die zusätzlichen Radfunktionen der Basilisk V4 Pro sowie der LED-Zugriff für den Viper-V4-Pro-Dongle nutzen USB-Schnittstelle 03. Fehlt der Zugriff, installiere die optionale Regel und stecke das Gerät neu ein.
 
@@ -41,5 +42,5 @@ sudo udevadm control --reload-rules
 Privater Teststand. Die Basilisk V4 Pro wurde unter CachyOS über HyperSpeed geprüft. Bei der DPI-Vorschau und beim Verwerfen blieben die gespeicherten Stufen erhalten. Änderungen der Pollingrate erreichten die Maus erst bei **Übernehmen**. Danach wurde der Ausgangswert wiederhergestellt. Der OpenRazer-Simulator lieferte 123 Maus-Endpunkte, die Pointrill alle erkannte. Dazu gehörten die Viper V4 Pro per Kabel und per Empfänger. Die LEDs des Viper-V4-Pro-Dongles wurden mit simulierten HID-Antworten getestet. Der Test an einem physischen Viper-Dongle steht noch aus.
 
 ```sh
-python -m unittest discover -s tests
+cargo test --locked
 ```

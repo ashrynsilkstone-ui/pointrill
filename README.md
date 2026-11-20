@@ -2,7 +2,7 @@
 
 [Deutsch](README.de.md)
 
-Pointrill is a Qt desktop app for OpenRazer mice and their receivers on Linux. It detects devices at startup and as they connect. Each device gets the settings its OpenRazer driver exposes.
+Pointrill is a native Rust desktop app for OpenRazer mice and their receivers on Linux. It detects devices at startup and as they connect. Each device gets the settings its OpenRazer driver exposes.
 
 ![Pointrill's sensor tab on a Basilisk V4 Pro](docs/sensor.png)
 
@@ -21,13 +21,14 @@ Edits appear immediately in the window. A Basilisk V4 Pro with HID access also r
 
 ## Run on Linux
 
-Install the OpenRazer driver, daemon and Python client for your distribution, along with the Python D-Bus bindings and PySide6. Start OpenRazer in your desktop session, then run from the checkout.
+Use Rust 1.95 or later, a Wayland or X11 desktop with OpenGL, and the OpenRazer driver and daemon for your distribution. Start OpenRazer in your desktop session, then run from the checkout.
 
 ```sh
-python -m pointrill
+cargo run --locked --release
 ```
 
-The project also provides a `pointrill` entry point when installed with `python -m pip install .`. Use a virtual environment with system packages enabled when your distribution provides the OpenRazer and D-Bus Python modules.
+The active DPI stage and polling rate are direct buttons. Click a DPI number to type it, or drag the number to adjust it. Run `cargo run --locked -- --probe` to list the connected devices and their available settings.
+
 
 Basilisk V4 Pro hardware DPI preview, its extra wheel controls and the Viper V4 Pro receiver LED fallback use USB interface 03. If the session lacks access, install the optional rule and reconnect the device.
 
@@ -41,5 +42,5 @@ sudo udevadm control --reload-rules
 This is a private test project. The Basilisk V4 Pro was tested on CachyOS over HyperSpeed. The DPI preview and discard left the saved stages intact. Polling changes reached the mouse on Apply and were restored after testing. All 123 mouse endpoints in the OpenRazer simulator were discovered, including the wired and wireless Viper V4 Pro. The Viper V4 Pro receiver LEDs were tested with simulated HID responses and await a physical hardware test.
 
 ```sh
-python -m unittest discover -s tests
+cargo test --locked
 ```
