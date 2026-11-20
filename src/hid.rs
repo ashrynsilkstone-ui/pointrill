@@ -30,7 +30,10 @@ impl Hid {
                     continue;
                 }
                 let uevent = fs::read_to_string(entry.path().join("uevent"))?;
-                if uevent.lines().any(|line| line == identity) {
+                if uevent.lines().any(|line| line == identity)
+                    || (device.viper_receiver()
+                        && paired_serial_matches(&interface.path(), &prefix, &device.serial))
+                {
                     let folder = entry.path().join("hidraw");
                     for raw in fs::read_dir(folder)? {
                         nodes.push(raw?.file_name());
@@ -171,6 +174,28 @@ impl Hid {
         self.report(7, 0x15, &values, &values)?;
         Ok(())
     }
+}
+
+// OpenRazer uses the paired mouse's serial from the driver interface. HID_UNIQ
+// on the control interface identifies the receiver itself.
+fn paired_serial_matches(control: &Path, hid_prefix: &str, serial: &str) -> bool {
+    let Ok(control) = fs::canonicalize(control) else {
+        return false;
+    };
+    let Some(interfaces) = control.parent().and_then(|usb| usb.read_dir().ok()) else {
+        return false;
+    };
+    interfaces
+        .flatten()
+        .filter(|interface| interface.file_type().is_ok_and(|kind| kind.is_dir()))
+        .filter_map(|interface| interface.path().read_dir().ok())
+        .any(|entries| {
+            entries.flatten().any(|hid| {
+                hid.file_name().to_string_lossy().starts_with(hid_prefix)
+                    && fs::read_to_string(hid.path().join("device_serial"))
+                        .is_ok_and(|driver_serial| driver_serial.trim() == serial)
+            })
+        })
 }
 
 fn ioctl(fd: &File, request: libc::c_ulong, buffer: &mut [u8]) -> std::io::Result<i32> {

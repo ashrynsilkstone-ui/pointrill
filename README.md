@@ -11,7 +11,7 @@ The device panel loads the corresponding product image from the URL provided by 
 - **Scroll wheel** covers supported wheel settings. On a Basilisk V4 Pro, the assigned button cycles through the selected modes. Smart Reel and acceleration are available when the selection includes free spin.
 - **Battery and receiver** cover charging status, the idle timeout, low-battery warning and supported receiver LEDs.
 
-The Viper V4 Pro is listed as a mouse over USB (`1532:00E5`) or through its HyperSpeed receiver (`1532:00E6`). The **Dongle** tab appears when Pointrill can read the receiver's LED modes. It uses OpenRazer's LED API when available, then tries the documented Viper V4 Pro receiver commands if the optional HID rule is installed. [OpenRazer device support](https://github.com/openrazer/openrazer/pull/2751) · [Receiver LED captures](https://github.com/openrazer/openrazer/issues/2760)
+The Viper V4 Pro is listed as a mouse over USB (`1532:00E5`) or through its HyperSpeed receiver (`1532:00E6`). With the receiver connected, the **Dongle** tab lets you set any of its three LEDs to off, battery level, connection quality, polling rate, or DPI stage. Pointrill uses OpenRazer's LED API when available and can also use the receiver's USB control interface if the desktop session has access. [OpenRazer device support](https://github.com/openrazer/openrazer/pull/2751) · [Receiver LED captures](https://github.com/openrazer/openrazer/issues/2760)
 
 ## Preview and apply
 
@@ -39,7 +39,7 @@ sudo udevadm control --reload-rules
 
 ## Test status
 
-This is a private test project. The Basilisk V4 Pro was tested on CachyOS over HyperSpeed. The DPI preview and discard left the saved stages intact. Polling changes reached the mouse on Apply and were restored after testing. All 123 mouse endpoints in the OpenRazer simulator were discovered, including the wired and wireless Viper V4 Pro. The Viper V4 Pro receiver LEDs were tested with simulated HID responses and await a physical hardware test.
+This is a private test project. The Basilisk V4 Pro was tested on CachyOS over HyperSpeed. The DPI preview and discard left the saved stages intact. Polling changes reached the mouse on Apply and were restored after testing. All 123 mouse endpoints in the OpenRazer simulator were discovered, including the wired and wireless Viper V4 Pro. A hardware test on CachyOS read all three Viper V4 Pro receiver LED modes, changed one through Apply, and restored the original settings.
 
 ```sh
 cargo test --locked

@@ -11,7 +11,7 @@ Die Geräteansicht lädt das zum Modell passende Produktbild über die Adresse a
 - **Scrollrad** enthält die Radfunktionen des Geräts. Bei der Basilisk V4 Pro durchläuft die belegte Taste die gewählten Modi. Smart Reel und Scrollbeschleunigung stehen bei Kombinationen mit Freilauf zur Verfügung.
 - **Akku und Dongle** zeigen Ladezustand, Ruhezustand, Akkuwarnung und unterstützte Status-LEDs.
 
-Die Viper V4 Pro erscheint als Maus über USB (`1532:00E5`) oder mit ihrem HyperSpeed-Dongle (`1532:00E6`). Der Reiter **Dongle** erscheint, wenn Pointrill die LED-Modi auslesen kann. Die App verwendet dafür nach Möglichkeit OpenRazer. Mit der optionalen HID-Regel probiert sie zusätzlich die dokumentierten Befehle für diesen Empfänger. [OpenRazer-Geräteunterstützung](https://github.com/openrazer/openrazer/pull/2751) · [Messdaten zu den LED-Modi](https://github.com/openrazer/openrazer/issues/2760)
+Die Viper V4 Pro erscheint als Maus über USB (`1532:00E5`) oder mit ihrem HyperSpeed-Dongle (`1532:00E6`). Mit angeschlossenem Empfänger lassen sich im Reiter **Dongle** alle drei LEDs einzeln auf Aus, Akkustand, Verbindungsqualität, Pollingrate oder DPI-Stufe stellen. Pointrill verwendet dafür nach Möglichkeit OpenRazer und kann bei vorhandenem Zugriff auch die USB-Steuerschnittstelle des Empfängers nutzen. [OpenRazer-Geräteunterstützung](https://github.com/openrazer/openrazer/pull/2751) · [Messdaten zu den LED-Modi](https://github.com/openrazer/openrazer/issues/2760)
 
 ## Vorschau und Übernehmen
 
@@ -39,7 +39,7 @@ sudo udevadm control --reload-rules
 
 ## Teststand
 
-Privater Teststand. Die Basilisk V4 Pro wurde unter CachyOS über HyperSpeed geprüft. Bei der DPI-Vorschau und beim Verwerfen blieben die gespeicherten Stufen erhalten. Änderungen der Pollingrate erreichten die Maus erst bei **Übernehmen**. Danach wurde der Ausgangswert wiederhergestellt. Der OpenRazer-Simulator lieferte 123 Maus-Endpunkte, die Pointrill alle erkannte. Dazu gehörten die Viper V4 Pro per Kabel und per Empfänger. Die LEDs des Viper-V4-Pro-Dongles wurden mit simulierten HID-Antworten getestet. Der Test an einem physischen Viper-Dongle steht noch aus.
+Privater Teststand. Die Basilisk V4 Pro wurde unter CachyOS über HyperSpeed geprüft. Bei der DPI-Vorschau und beim Verwerfen blieben die gespeicherten Stufen erhalten. Änderungen der Pollingrate erreichten die Maus erst bei **Übernehmen**. Danach wurde der Ausgangswert wiederhergestellt. Der OpenRazer-Simulator lieferte 123 Maus-Endpunkte, die Pointrill alle erkannte. Dazu gehörten die Viper V4 Pro per Kabel und per Empfänger. Beim Hardwaretest unter CachyOS wurden alle drei LED-Modi des Viper-V4-Pro-Dongles ausgelesen, ein Modus über **Übernehmen** geändert und die ursprünglichen Einstellungen wiederhergestellt.
 
 ```sh
 cargo test --locked

@@ -258,6 +258,50 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "temporarily changes one LED on an attached Viper V4 Pro receiver"]
+    fn viper_hardware_restores_dongle_leds() -> Result<()> {
+        ensure!(
+            std::env::var("POINTRILL_REAL_HARDWARE").as_deref() == Ok("1"),
+            "Hardwaretest braucht explizite Freigabe"
+        );
+        let mut session = connect();
+        let (devices, _, _) = session.scan()?;
+        let mut receivers = devices.into_iter().filter(Device::viper_receiver);
+        let device = receivers
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Kein Viper-V4-Pro-Empfänger erkannt"))?;
+        ensure!(
+            receivers.next().is_none(),
+            "Mehr als ein Viper-Empfänger erkannt"
+        );
+        let snapshot = session.open(device.clone())?;
+        let field = snapshot
+            .fields
+            .iter()
+            .find(|field| matches!(field.key, Key::Indicators | Key::ViperIndicators))
+            .ok_or_else(|| anyhow::anyhow!("Dongle-LED-Einstellungen fehlen"))?;
+        let Value::Indicators(original) = field.value else {
+            anyhow::bail!("Drei LED-Modi erwartet");
+        };
+        let mut trial = original;
+        trial[0] = i32::from(original[0] == 0);
+        let observed = session
+            .apply(vec![(field.key.clone(), Value::Indicators(trial))])
+            .and_then(|_| Hid::open(&device)?.indicators());
+        session.apply(vec![(field.key.clone(), Value::Indicators(original))])?;
+        ensure!(
+            Hid::open(&device)?.indicators()? == original,
+            "Ausgangswerte der Dongle-LEDs wurden nicht wiederhergestellt"
+        );
+        ensure!(
+            observed? == trial,
+            "Der Dongle meldet einen anderen LED-Modus"
+        );
+        println!("Viper-Dongle · LED-Modi geprüft und wiederhergestellt: {original:?}");
+        Ok(())
+    }
+
+    #[test]
     #[ignore = "temporarily exercises an attached Basilisk V4 Pro"]
     fn basilisk_hardware_restores_dpi_preview_and_polling() -> Result<()> {
         ensure!(

@@ -18,7 +18,13 @@ const SCROLL: &str = "razer.device.scroll";
 const POWER: &str = "razer.device.power";
 const LIGHT: &str = "razer.device.lighting";
 const INDICATOR: [&str; 5] = ["Aus", "An", "Akku", "Verbindung", "Kopplung"];
-const MULTI_INDICATOR: [&str; 5] = ["Aus", "Akku", "Verbindung", "Pollingrate", "DPI"];
+const MULTI_INDICATOR: [&str; 5] = [
+    "Aus",
+    "Akku",
+    "Verbindungsqualität",
+    "Pollingrate",
+    "DPI-Stufe",
+];
 
 pub(crate) type Methods = HashSet<(String, String)>;
 
