@@ -1,4 +1,4 @@
-# Pointrill (Fun and test-Project)
+# Pointrill (Fun and Test-Project)
 
 [Deutsch](README.de.md)
 
