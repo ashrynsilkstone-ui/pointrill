@@ -235,14 +235,13 @@ fn action_item(label: impl AsRef<str>, icon: &str, action: Action) -> MenuItem<P
 const ICON_GRID: i32 = 22;
 const GREEN: [u8; 4] = [255, 122, 241, 43];
 const LOW_BATTERY: [u8; 4] = [255, 255, 130, 119];
-const READOUT: [u8; 4] = [255, 233, 239, 234];
 
 fn tray_icon(size: i32, battery: Option<u8>, dpi_stage: Option<u8>) -> ksni::Icon {
     let mut data = Vec::with_capacity((size * size * 4) as usize);
     let track = [210, 100, 117, 105];
     let low_battery = battery.is_some_and(|level| level <= 15);
     let charge = if low_battery { LOW_BATTERY } else { GREEN };
-    let compact_mark = battery.is_some() || dpi_stage.is_some();
+    let compact_mark = dpi_stage.is_some();
     for row in 0..size {
         for column in 0..size {
             let x = (column as f32 + 0.5) / size as f32;
@@ -278,34 +277,12 @@ fn tray_icon(size: i32, battery: Option<u8>, dpi_stage: Option<u8>) -> ksni::Ico
         data,
     };
     if let Some(stage) = dpi_stage {
-        let y = if battery.is_some() { 3 } else { 7 };
-        let text = if stage < 100 {
-            format!("D{stage}")
-        } else {
-            stage.to_string()
-        };
-        draw_readout(&mut icon, &text, y, GREEN);
-    }
-    if let Some(level) = battery {
-        let level = level.min(100);
-        let y = if dpi_stage.is_some() { 11 } else { 7 };
-        let text = if level == 100 {
-            "100".into()
-        } else {
-            format!("{level}%")
-        };
-        draw_readout(
-            &mut icon,
-            &text,
-            y,
-            if low_battery { LOW_BATTERY } else { READOUT },
-        );
+        draw_stage(&mut icon, stage);
     }
     icon
 }
 
-fn draw_readout(icon: &mut ksni::Icon, text: &str, top: i32, color: [u8; 4]) {
-    // A 3×5 pixel font keeps both readings legible at Plasma's small sizes.
+fn draw_stage(icon: &mut ksni::Icon, stage: u8) {
     const NUMERALS: [[u8; 5]; 10] = [
         [0b111, 0b101, 0b101, 0b101, 0b111],
         [0b010, 0b110, 0b010, 0b010, 0b111],
@@ -318,27 +295,42 @@ fn draw_readout(icon: &mut ksni::Icon, text: &str, top: i32, color: [u8; 4]) {
         [0b111, 0b101, 0b111, 0b101, 0b111],
         [0b111, 0b101, 0b111, 0b001, 0b111],
     ];
-    let left = ICON_GRID - 4 * text.len() as i32;
-    for (index, byte) in text.bytes().enumerate() {
-        let glyph = match byte {
-            b'0'..=b'9' => NUMERALS[usize::from(byte - b'0')],
-            b'D' => [0b110, 0b101, 0b101, 0b101, 0b110],
-            b'%' => [0b101, 0b001, 0b010, 0b100, 0b101],
-            _ => continue,
-        };
-        let offset = left + 4 * index as i32;
-        for (row, bits) in glyph.into_iter().enumerate() {
-            let y = top + row as i32;
-            for column in 0..3 {
-                if bits & (0b100 >> column) == 0 {
-                    continue;
-                }
-                let x = offset + column;
-                for py in y * icon.height / ICON_GRID..(y + 1) * icon.height / ICON_GRID {
-                    for px in x * icon.width / ICON_GRID..(x + 1) * icon.width / ICON_GRID {
-                        let start = (py * icon.width + px) as usize * 4;
-                        icon.data[start..start + 4].copy_from_slice(&color);
-                    }
+    const PREFIX: [u8; 5] = [0b110, 0b101, 0b101, 0b101, 0b110];
+
+    if stage < 10 {
+        draw_glyph(icon, PREFIX, 10, 7, 1);
+        draw_glyph(icon, NUMERALS[usize::from(stage)], 15, 5, 2);
+        return;
+    }
+
+    let digits = stage.to_string();
+    let left = ICON_GRID - 4 * digits.len() as i32;
+    if stage < 100 {
+        draw_glyph(icon, PREFIX, left - 4, 7, 1);
+    }
+    for (index, digit) in digits.bytes().enumerate() {
+        draw_glyph(
+            icon,
+            NUMERALS[usize::from(digit - b'0')],
+            left + 4 * index as i32,
+            7,
+            1,
+        );
+    }
+}
+
+fn draw_glyph(icon: &mut ksni::Icon, glyph: [u8; 5], left: i32, top: i32, scale: i32) {
+    for (row, bits) in glyph.into_iter().enumerate() {
+        let y = top + row as i32 * scale;
+        for column in 0..3 {
+            if bits & (0b100 >> column) == 0 {
+                continue;
+            }
+            let x = left + column * scale;
+            for py in y * icon.height / ICON_GRID..(y + scale) * icon.height / ICON_GRID {
+                for px in x * icon.width / ICON_GRID..(x + scale) * icon.width / ICON_GRID {
+                    let start = (py * icon.width + px) as usize * 4;
+                    icon.data[start..start + 4].copy_from_slice(&GREEN);
                 }
             }
         }
@@ -546,11 +538,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dpi_stage_and_battery_update_separate_readouts() {
+    fn dpi_stage_and_battery_bar_update_separately() {
         let original = tray_icon(22, Some(80), Some(1));
         let stage = tray_icon(22, Some(80), Some(2));
         let battery = tray_icon(22, Some(10), Some(1));
-        let split = 10 * ICON_GRID as usize * 4;
+        let split = 18 * ICON_GRID as usize * 4;
 
         assert_ne!(original.data[..split], stage.data[..split]);
         assert_eq!(original.data[split..], stage.data[split..]);

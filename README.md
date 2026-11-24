@@ -41,7 +41,7 @@ cargo run --locked --release
 
 ## KDE tray and autostart
 
-Click the Pointrill tray icon to open the main window. The icon shows the DPI stage with a D prefix above the battery level when the mouse reports these readings. Its tooltip shows the selected mouse, battery, active DPI stage and polling rate where available. The context menu offers device selection, profile switching, the polling test and the autostart toggle. The tray runs in the background when the settings window is closed.
+Click the Pointrill tray icon to open the main window. The icon shows the DPI stage with a D prefix and the battery level as a bar when available. Its tooltip shows the selected mouse, battery, active DPI stage and polling rate where available. The context menu offers device selection, profile switching, the polling test and the autostart toggle. The tray runs in the background when the settings window is closed.
 
 Install the executable at a stable path, enable autostart and start the tray for this session.
 
