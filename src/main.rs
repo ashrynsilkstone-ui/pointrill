@@ -1,7 +1,6 @@
 mod bus;
 mod diagnostics;
 mod hid;
-mod illustrations;
 mod model;
 mod profiles;
 mod ui;

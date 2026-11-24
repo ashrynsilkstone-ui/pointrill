@@ -13,11 +13,11 @@ use crate::model::{
 };
 use crate::worker::{Reply, Request, Worker};
 
-const BASE: Color = Color::from_rgb(10, 12, 11);
-const RAIL: Color = Color::from_rgb(15, 17, 16);
-const PANEL: Color = Color::from_rgb(20, 23, 21);
-const FIELD: Color = Color::from_rgb(29, 33, 30);
-const LINE: Color = Color::from_rgb(57, 64, 59);
+const BASE: Color = Color::from_rgb(11, 14, 12);
+const RAIL: Color = Color::from_rgb(16, 20, 17);
+const PANEL: Color = Color::from_rgb(22, 27, 23);
+const FIELD: Color = Color::from_rgb(30, 37, 32);
+const LINE: Color = Color::from_rgb(51, 64, 55);
 const TEXT: Color = Color::from_rgb(244, 247, 244);
 const MUTED: Color = Color::from_rgb(169, 180, 173);
 const GREEN: Color = Color::from_rgb(122, 241, 43);
@@ -41,7 +41,6 @@ pub struct App {
     confirm: Option<Pending>,
     closing: bool,
     ready_to_close: bool,
-    illustration: Option<DeviceIllustration>,
     capture: Option<(PathBuf, Instant)>,
     library: Vec<crate::profiles::Profile>,
     profile_id: Option<String>,
@@ -54,11 +53,6 @@ pub struct App {
     monitor: Option<crate::diagnostics::InputMonitor>,
     file_picker: Option<Child>,
     profile_revision: Option<SystemTime>,
-}
-
-struct DeviceIllustration {
-    id: &'static str,
-    texture: image::ImageResult<egui::TextureHandle>,
 }
 
 enum Pending {
@@ -91,7 +85,6 @@ impl App {
             confirm: None,
             closing: false,
             ready_to_close: false,
-            illustration: None,
             capture: capture.map(|path| (path, Instant::now() + Duration::from_millis(1400))),
             library: Vec::new(),
             profile_id: None,
@@ -128,7 +121,7 @@ impl App {
         let _ = self.worker.send.send(Request::Open(device));
     }
 
-    fn accept_snapshot(&mut self, ctx: &egui::Context, snapshot: Snapshot) {
+    fn accept_snapshot(&mut self, snapshot: Snapshot) {
         let same = self
             .snapshot
             .as_ref()
@@ -142,7 +135,6 @@ impl App {
         if !same {
             self.status = Status::default();
         }
-        self.set_illustration(ctx, &snapshot.device);
         self.diagnostics.clear();
         self.profile_revision = crate::profiles::revision(&snapshot.device);
         self.snapshot = Some(snapshot);
@@ -158,19 +150,6 @@ impl App {
         self.preview_sent = None;
         self.preview_deadline = None;
         self.next_scan = Instant::now();
-    }
-
-    fn set_illustration(&mut self, ctx: &egui::Context, device: &Device) {
-        let asset = crate::illustrations::for_device(device);
-        if self.illustration.as_ref().map(|art| art.id) == asset.map(|art| art.id) {
-            return;
-        }
-        self.illustration = asset.map(|art| DeviceIllustration {
-            id: art.id,
-            texture: art
-                .decode()
-                .map(|pixels| ctx.load_texture(art.id, pixels, egui::TextureOptions::LINEAR)),
-        });
     }
 
     fn read_replies(&mut self, context: &egui::Context) {
@@ -193,7 +172,6 @@ impl App {
                             if self.devices.is_empty() {
                                 self.snapshot = None;
                                 self.monitor = None;
-                                self.illustration = None;
                                 self.draft.clear();
                                 self.notify("Warte auf eine Maus oder einen Empfänger.", false);
                             } else if current != selected.as_ref() || current.is_none() {
@@ -226,7 +204,7 @@ impl App {
                     self.busy = false;
                     match result {
                         Ok(snapshot) => {
-                            self.accept_snapshot(context, snapshot);
+                            self.accept_snapshot(snapshot);
                             self.notify("Gerät bereit", false);
                         }
                         Err(error) => self.notify(format!("{error:#}"), true),
@@ -236,7 +214,7 @@ impl App {
                     self.busy = false;
                     match result {
                         Ok(snapshot) => {
-                            self.accept_snapshot(context, snapshot);
+                            self.accept_snapshot(snapshot);
                             self.notify("Einstellungen übernommen", false);
                         }
                         Err(error) => self.notify(format!("{error:#}"), true),
@@ -246,7 +224,7 @@ impl App {
                     self.busy = false;
                     match result {
                         Ok(snapshot) => {
-                            self.accept_snapshot(context, snapshot);
+                            self.accept_snapshot(snapshot);
                             self.notify(
                                 "LED-Test beendet · Ausgangswerte wiederhergestellt",
                                 false,
@@ -368,26 +346,11 @@ impl App {
             || (page == Page::Power && self.status.battery.is_some())
     }
 
-    fn header(&mut self, ui: &mut Ui) {
+    fn header(ui: &mut Ui) {
         ui.horizontal(|ui| {
-            let (mark, _) = ui.allocate_exact_size(vec2(38.0, 38.0), egui::Sense::hover());
+            let (mark, _) = ui.allocate_exact_size(vec2(36.0, 34.0), egui::Sense::hover());
             logo(ui.painter(), mark);
-            ui.separator();
-            ui.add_space(3.0);
-            ui.label(emphasis("POINTRILL", 27.0));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if let Some(snapshot) = &self.snapshot {
-                    let device = &snapshot.device;
-                    ui.label(
-                        Text::new(format!("{:04X}:{:04X}", device.vid, device.pid))
-                            .monospace()
-                            .color(MUTED)
-                            .size(12.0),
-                    );
-                    ui.add_space(9.0);
-                    connection_tag(ui, device.connection());
-                }
-            });
+            ui.label(emphasis("POINTRILL", 25.0));
         });
     }
 
@@ -436,16 +399,11 @@ impl App {
     }
 
     fn main(&mut self, ui: &mut Ui) {
-        if self.page == Page::Diagnostics {
-            self.diagnostics_view(ui);
-            return;
-        }
-        if self.page == Page::Profiles && self.snapshot.is_some() {
-            self.profiles_view(ui);
-            return;
-        }
-        if self.snapshot.is_none() {
-            ui.add_space(66.0);
+        if let Some(snapshot) = &self.snapshot {
+            self.device_overview(ui, &snapshot.device);
+            ui.add_space(if compact_height(ui) { 8.0 } else { 15.0 });
+        } else if self.page != Page::Diagnostics {
+            ui.add_space(48.0);
             ui.vertical_centered(|ui| {
                 ui.label(emphasis("Maus verbinden", 32.0));
                 ui.label(
@@ -455,85 +413,99 @@ impl App {
             });
             return;
         }
-        let width = ui.available_width();
-        if width >= 595.0 {
-            let gap = 16.0;
-            let settings_width = ((width - gap) * 0.55).max(390.0);
-            let spacing = ui.spacing().item_spacing.x;
-            ui.horizontal_top(|ui| {
-                ui.spacing_mut().item_spacing.x = gap;
-                let settings = ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.x = spacing;
-                    ui.set_width(settings_width);
-                    self.device_settings(ui);
-                });
-                let illustration_height = settings.response.rect.height().clamp(354.0, 590.0);
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.x = spacing;
-                    ui.set_width(width - gap - settings_width);
-                    self.device_view(ui, illustration_height);
-                });
-            });
-        } else {
-            self.device_settings(ui);
-            ui.add_space(12.0);
-            self.device_view(ui, (width * 0.8).clamp(300.0, 455.0));
+
+        match self.page {
+            Page::Diagnostics => self.diagnostics_view(ui),
+            Page::Profiles => self.profiles_view(ui),
+            _ => self.settings_view(ui),
         }
     }
 
-    fn device_settings(&mut self, ui: &mut Ui) {
-        let Some(snapshot) = &self.snapshot else {
-            return;
-        };
+    fn device_overview(&self, ui: &mut Ui, device: &Device) {
         let compact = compact_height(ui);
-        if compact {
-            ui.spacing_mut().item_spacing.y = 4.0;
-            ui.spacing_mut().interact_size.y = 27.0;
-            ui.spacing_mut().button_padding = vec2(6.0, 4.0);
+        let background = ui.painter().add(egui::Shape::Noop);
+        let overview = tile(Color::TRANSPARENT)
+            .inner_margin(egui::Margin::symmetric(
+                if compact { 15 } else { 21 },
+                if compact { 10 } else { 17 },
+            ))
+            .corner_radius(12)
+            .show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
+                let name = device.name.trim_start_matches("Razer ");
+                let title = [
+                    " (Wireless)",
+                    " (Wired)",
+                    " (Receiver)",
+                    " (Bluetooth)",
+                    " (Dongle)",
+                ]
+                .into_iter()
+                .find_map(|suffix| name.strip_suffix(suffix))
+                .unwrap_or(name);
+                ui.label(emphasis(title, if compact { 30.0 } else { 39.0 }));
+                ui.horizontal_wrapped(|ui| {
+                    connection_tag(ui, device.connection());
+                    ui.label(
+                        Text::new(format!("{:04X}:{:04X}", device.vid, device.pid))
+                            .monospace()
+                            .color(MUTED)
+                            .size(12.0),
+                    );
+                });
+            });
+        paint_device_banner(ui.painter(), background, overview.response.rect);
+
+        let mut metrics = Vec::with_capacity(3);
+        if let Some(battery) = self.status.battery {
+            metrics.push(Metric {
+                icon: Icon::Battery,
+                label: "Akku",
+                value: format!("{battery} %"),
+                detail: self.status.charging.then(|| "Lädt".into()),
+                level: Some(battery),
+            });
         }
-        let title = snapshot.device.name.trim_start_matches("Razer ");
-        let title = title.split(" (").next().unwrap_or(title);
-        ui.label(emphasis(title, if compact { 32.0 } else { 40.0 }));
-        ui.add_space(if compact { 3.0 } else { 6.0 });
-        ui.horizontal_wrapped(|ui| {
-            if let Some(battery) = self.status.battery {
-                readout(
-                    ui,
-                    Icon::Battery,
-                    "Akku",
-                    if self.status.charging {
-                        format!("{battery} % · lädt")
-                    } else {
-                        format!("{battery} %")
-                    },
-                    GREEN,
-                );
-            }
-            if let Some((x, y)) = self.status.dpi {
-                let dpi = if x == y || y == 0 {
+        if let Some((x, y)) = self.status.dpi {
+            metrics.push(Metric {
+                icon: Icon::Sensor,
+                label: "Empfindlichkeit",
+                value: if x == y || y == 0 {
                     format!("{x} DPI")
                 } else {
                     format!("{x} × {y} DPI")
-                };
-                readout(ui, Icon::Sensor, "Sensor", dpi, TEXT);
+                },
+                detail: self.status.dpi_stage.map(|stage| format!("Stufe {stage}")),
+                level: None,
+            });
+        }
+        if let Some(polling) = self.status.polling {
+            metrics.push(Metric {
+                icon: Icon::Pulse,
+                label: "Pollingrate",
+                value: format!("{polling} Hz"),
+                detail: None,
+                level: None,
+            });
+        }
+        if !metrics.is_empty() {
+            ui.add_space(if compact { 5.0 } else { 9.0 });
+            let count = metrics
+                .len()
+                .min((ui.available_width() / 158.0).floor().max(1.0) as usize);
+            for row in metrics.chunks(count) {
+                ui.columns(count, |columns| {
+                    for (column, metric) in columns.iter_mut().zip(row) {
+                        metric.show(column, compact);
+                    }
+                });
             }
-            if let Some(polling) = self.status.polling {
-                readout(
-                    ui,
-                    Icon::Pulse,
-                    "Pollingrate",
-                    format!("{polling} Hz"),
-                    TEXT,
-                );
-            }
-        });
-        ui.add_space(if compact { 6.0 } else { 18.0 });
-        self.settings_view(ui);
+        }
     }
 
     fn settings_view(&mut self, ui: &mut Ui) {
-        ui.label(emphasis(self.page.title().to_uppercase(), 23.0));
-        ui.add_space(5.0);
+        ui.label(emphasis(self.page.title(), 25.0));
+        ui.add_space(3.0);
         let Some(snapshot) = &self.snapshot else {
             return;
         };
@@ -543,12 +515,21 @@ impl App {
             .zip(&self.draft)
             .find(|(field, _)| matches!(field.key, Key::Cycle(_)))
             .is_none_or(|(_, value)| has_free_spin(value));
+        let compact = compact_height(ui);
+        if compact {
+            ui.spacing_mut().item_spacing.y = 4.0;
+            ui.spacing_mut().interact_size.y = 27.0;
+        }
+        let padding = if compact { 9 } else { 14 };
+        let mut visible: Vec<_> = snapshot
+            .fields
+            .iter()
+            .zip(&mut self.draft)
+            .enumerate()
+            .filter(|(_, (field, _))| field.page == self.page && (free_spin || !field.key.assist()))
+            .collect();
         let mut touched = false;
-        let padding = if compact_height(ui) { 9 } else { 12 };
-        for (index, (field, edit)) in snapshot.fields.iter().zip(&mut self.draft).enumerate() {
-            if field.page != self.page || (!free_spin && field.key.assist()) {
-                continue;
-            }
+        let mut card = |ui: &mut Ui, (index, (field, edit)): (usize, (&Field, &mut Value))| {
             ui.push_id(index, |ui| {
                 tile(PANEL).inner_margin(padding).show(ui, |ui| {
                     ui.set_min_width(ui.available_width());
@@ -556,6 +537,35 @@ impl App {
                 });
             });
             ui.add_space(4.0);
+        };
+        if self.page == Page::Sensor
+            && visible.len() > 1
+            && ui.available_width() >= 740.0
+            && let Some(index) = visible
+                .iter()
+                .position(|(_, (field, _))| field.key == Key::Polling)
+        {
+            let polling = visible.remove(index);
+            let width = ui.available_width();
+            let gap = 13.0;
+            let primary_width = (width - gap) * 0.61;
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = gap;
+                ui.vertical(|ui| {
+                    ui.set_width(primary_width);
+                    for field in visible {
+                        card(ui, field);
+                    }
+                });
+                ui.vertical(|ui| {
+                    ui.set_width(width - gap - primary_width);
+                    card(ui, polling);
+                });
+            });
+        } else {
+            for field in visible {
+                card(ui, field);
+            }
         }
         if self.page == Page::Wheel && !free_spin {
             ui.label(Text::new("Smart Reel und Scrollbeschleunigung sind bei Kombinationen mit Freilauf verfügbar.").color(MUTED));
@@ -585,64 +595,6 @@ impl App {
             };
             self.notify(message, false);
         }
-    }
-
-    fn device_view(&mut self, ui: &mut Ui, height: f32) {
-        let Some(snapshot) = &self.snapshot else {
-            return;
-        };
-        let mut accent = GREEN;
-        if self.page == Page::Lights
-            && let Some((_, Value::Light { effect, color, .. })) = self
-                .changes()
-                .into_iter()
-                .rev()
-                .find(|(key, _)| matches!(key, Key::Light(_)))
-            && effect.is_some_and(|effect| effect.color())
-        {
-            accent = Color::from_rgb(color[0], color[1], color[2]);
-        }
-        let caption = match self.page {
-            Page::Wheel if snapshot.device.basilisk() => "Umschalten über die belegte Maustaste",
-            Page::Lights => "Entwurf der Beleuchtung",
-            Page::Receiver => "Statusanzeigen des Empfängers",
-            _ => "Pointrill-Illustration",
-        };
-        tile(BASE).show(ui, |ui| {
-            let width = ui.available_width();
-            let (area, response) =
-                ui.allocate_exact_size(vec2(width, height - 52.0), egui::Sense::hover());
-            let painter = ui.painter_at(area);
-            let center = area.center();
-            let texture = self.illustration.as_ref().map(|art| &art.texture);
-            if let Some(Ok(texture)) = texture {
-                illustration_backdrop(&painter, area, accent);
-                let size = texture.size_vec2();
-                let fit = ((area.width() - 36.0) / size.x).min((area.height() - 36.0) / size.y);
-                let bounds = Rect::from_center_size(center, size * fit.max(0.0));
-                painter.image(
-                    texture.id(),
-                    bounds,
-                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                    Color::WHITE,
-                );
-            } else {
-                let status = if let Some(Err(error)) = texture {
-                    response.on_hover_text(error.to_string());
-                    "Illustration konnte nicht geladen werden"
-                } else {
-                    "Keine Illustration verfügbar"
-                };
-                painter.text(
-                    center,
-                    egui::Align2::CENTER_CENTER,
-                    status,
-                    FontId::proportional(13.0),
-                    MUTED,
-                );
-            }
-            ui.label(Text::new(caption).color(MUTED).size(12.0));
-        });
     }
 
     fn open_page(&mut self, page: Page) {
@@ -793,7 +745,6 @@ impl App {
             .cloned()
             .collect();
         ui.label(emphasis("Profile", 34.0));
-        ui.label(Text::new(&device.name).color(MUTED));
         ui.add_space(13.0);
         tile(PANEL).show(ui, |ui| {
             ui.set_min_width(ui.available_width());
@@ -1184,7 +1135,7 @@ impl eframe::App for App {
             egui::Panel::top("brand")
                 .exact_size(if compact { 58.0 } else { 68.0 })
                 .frame(panel(RAIL, if compact { 10 } else { 16 }))
-                .show(ui, |ui| self.header(ui));
+                .show(ui, Self::header);
             egui::Panel::bottom("actions")
                 .exact_size(if compact { 56.0 } else { 63.0 })
                 .frame(panel(RAIL, if compact { 9 } else { 12 }))
@@ -1281,7 +1232,9 @@ fn editor(ui: &mut Ui, field: &Field, value: &mut Value) -> bool {
         Key::Brightness(Some(zone)) => format!("{} · Helligkeit", zone.name),
         _ => field.label.into(),
     };
-    ui.label(emphasis(label.to_uppercase(), 15.0));
+    if !matches!(field.control, Control::Stages { .. }) {
+        ui.label(emphasis(label, 17.0));
+    }
     match (&field.control, &mut *value) {
         (Control::Stages { max }, Value::Stages { active, points }) => {
             stages(ui, *max, active, points)
@@ -1319,6 +1272,9 @@ fn editor(ui: &mut Ui, field: &Field, value: &mut Value) -> bool {
                     }
                 }
             });
+        }
+        (Control::Choices(options), Value::Number(number)) if field.key == Key::Polling => {
+            polling_choices(ui, options, number);
         }
         (Control::Choices(options), Value::Number(number)) => options_row(ui, options, number),
         (Control::Range { min, max, unit }, Value::Number(number)) => {
@@ -1370,55 +1326,75 @@ fn editor(ui: &mut Ui, field: &Field, value: &mut Value) -> bool {
 }
 
 fn stages(ui: &mut Ui, max: u16, active: &mut u8, points: &mut Vec<Dpi>) {
+    let compact = compact_height(ui);
     let height = ui.spacing().interact_size.y;
-    ui.add_space(3.0);
-    ui.horizontal_wrapped(|ui| {
-        ui.label(Text::new("Anzahl").color(MUTED));
-        if ui
-            .add_enabled(
-                points.len() > 1,
-                egui::Button::new("-").min_size(vec2(30.0, height)),
-            )
-            .on_hover_text("Letzte DPI-Stufe entfernen")
-            .clicked()
-        {
-            points.pop();
-            *active = (*active).min(points.len() as u8);
-        }
-        ui.label(
-            Text::new(points.len().to_string())
-                .size(17.0)
-                .monospace()
-                .strong(),
-        );
-        if ui
-            .add_enabled(
-                points.len() < 5,
-                egui::Button::new("+").min_size(vec2(30.0, height)),
-            )
-            .on_hover_text("DPI-Stufe hinzufügen")
-            .clicked()
-        {
-            points.push(points.last().copied().unwrap_or((800, 800)));
-        }
+    ui.horizontal(|ui| {
+        ui.label(emphasis("DPI-Stufen", 17.0));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui
+                .add_enabled(
+                    points.len() < 5,
+                    egui::Button::new("+").min_size(vec2(29.0, height)),
+                )
+                .on_hover_text("DPI-Stufe hinzufügen")
+                .clicked()
+            {
+                points.push(points.last().copied().unwrap_or((800, 800)));
+            }
+            ui.label(Text::new(points.len().to_string()).monospace().strong());
+            if ui
+                .add_enabled(
+                    points.len() > 1,
+                    egui::Button::new("-").min_size(vec2(29.0, height)),
+                )
+                .on_hover_text("Letzte DPI-Stufe entfernen")
+                .clicked()
+            {
+                points.pop();
+                *active = (*active).min(points.len() as u8);
+            }
+            ui.label(Text::new("Anzahl").color(MUTED));
+        });
     });
-    ui.add_space(7.0);
+    ui.add_space(if compact { 3.0 } else { 6.0 });
+    let stage_width = 95.0;
+    let axis_width =
+        ((ui.available_width() - 18.0 - stage_width - 2.0 * ui.spacing().item_spacing.x) / 2.0)
+            .max(60.0);
+    let labels = ui
+        .horizontal(|ui| {
+            ui.add_space(9.0 - ui.spacing().item_spacing.x);
+            ui.add_sized(
+                [stage_width, 18.0],
+                egui::Label::new(Text::new("Stufe").size(12.0).color(MUTED)),
+            );
+            ["DPI X", "DPI Y"].map(|title| {
+                ui.add_sized(
+                    [axis_width, 18.0],
+                    egui::Label::new(Text::new(title).size(12.0).color(MUTED)),
+                )
+                .id
+            })
+        })
+        .inner;
+
     for (index, (x, y)) in points.iter_mut().enumerate() {
         let stage = (index + 1) as u8;
         let selected = stage == *active;
         egui::Frame::new()
             .fill(if selected { ACTIVE_BG } else { RAIL })
-            .stroke(Stroke::new(1.0, if selected { GREEN } else { LINE }))
-            .corner_radius(6)
-            .inner_margin(egui::Margin::symmetric(7, 4))
+            .stroke(Stroke::new(
+                1.0,
+                if selected {
+                    Color::from_rgb(78, 127, 59)
+                } else {
+                    LINE
+                },
+            ))
+            .corner_radius(7)
+            .inner_margin(egui::Margin::symmetric(8, if compact { 3 } else { 5 }))
             .show(ui, |ui| {
-                let width = ui.available_width();
-                let stage_width = 67.0;
-                let axis_label_width = 28.0;
-                let gaps = 4.0 * ui.spacing().item_spacing.x;
-                let axis_width = ((width - stage_width - 2.0 * axis_label_width - gaps) / 2.0)
-                    .clamp(55.0, 158.0);
-                ui.set_min_width(width);
+                ui.set_min_width(ui.available_width());
                 ui.horizontal(|ui| {
                     if button(
                         ui,
@@ -1431,13 +1407,8 @@ fn stages(ui: &mut Ui, max: u16, active: &mut u8, points: &mut Vec<Dpi>) {
                     {
                         *active = stage;
                     }
-                    for (name, number) in [("DPI X", x), ("DPI Y", y)] {
-                        let label = ui.add_sized(
-                            vec2(axis_label_width, height),
-                            egui::Label::new(Text::new(name).size(12.0).color(MUTED)),
-                        );
-                        dpi_number(ui, number, max, axis_width).labelled_by(label.id);
-                    }
+                    dpi_number(ui, x, max, axis_width).labelled_by(labels[0]);
+                    dpi_number(ui, y, max, axis_width).labelled_by(labels[1]);
                 });
             });
     }
@@ -1459,10 +1430,27 @@ fn axis(ui: &mut Ui, name: &str, value: &mut u16, max: u16) {
     dpi_number(ui, value, max, 102.0).labelled_by(label.id);
 }
 
-fn options_row(ui: &mut Ui, options: &[(i32, String)], number: &mut i32) {
-    if !options.iter().any(|(value, _)| value == number) {
+fn polling_choices(ui: &mut Ui, options: &[(i32, String)], number: &mut i32) {
+    choice_status(ui, options, *number);
+    let columns = options.len().clamp(1, 3);
+    let gap = ui.spacing().item_spacing.x;
+    let cell_width = (ui.available_width() - gap * (columns as f32 - 1.0)) / columns as f32;
+    let height = if compact_height(ui) { 33.0 } else { 41.0 };
+    for row in options.chunks(columns) {
+        ui.horizontal(|ui| {
+            for (value, label) in row {
+                if button(ui, label, value == number, (cell_width, height)).clicked() {
+                    *number = *value;
+                }
+            }
+        });
+    }
+}
+
+fn choice_status(ui: &mut Ui, options: &[(i32, String)], number: i32) {
+    if !options.iter().any(|(value, _)| *value == number) {
         ui.label(
-            Text::new(if *number < 0 {
+            Text::new(if number < 0 {
                 "Kombination wählen".into()
             } else {
                 format!("Aktuell · {number}")
@@ -1470,6 +1458,10 @@ fn options_row(ui: &mut Ui, options: &[(i32, String)], number: &mut i32) {
             .color(MUTED),
         );
     }
+}
+
+fn options_row(ui: &mut Ui, options: &[(i32, String)], number: &mut i32) {
+    choice_status(ui, options, *number);
     let size = if compact_height(ui) {
         (50.0, 29.0)
     } else {
@@ -1617,20 +1609,47 @@ fn connection_tag(ui: &mut Ui, label: &str) {
         });
 }
 
-fn readout(ui: &mut Ui, glyph: Icon, title: &str, value: String, color: Color) {
-    tile(PANEL)
-        .inner_margin(egui::Margin::symmetric(10, 7))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                let (rect, _) = ui.allocate_exact_size(vec2(20.0, 20.0), egui::Sense::hover());
-                glyph.paint(ui.painter(), rect.center(), color);
-                if matches!(glyph, Icon::Battery) {
-                    ui.label(Text::new(title).size(13.0));
+struct Metric {
+    icon: Icon,
+    label: &'static str,
+    value: String,
+    detail: Option<String>,
+    level: Option<u8>,
+}
+
+impl Metric {
+    fn show(&self, ui: &mut Ui, compact: bool) {
+        tile(PANEL)
+            .inner_margin(egui::Margin::symmetric(11, if compact { 6 } else { 9 }))
+            .show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
+                ui.set_min_height(if compact { 61.0 } else { 73.0 });
+                ui.horizontal(|ui| {
+                    let (icon, _) = ui.allocate_exact_size(vec2(19.0, 18.0), egui::Sense::hover());
+                    self.icon.paint(ui.painter(), icon.center(), GREEN);
+                    ui.label(Text::new(self.label).size(13.0).color(MUTED));
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(emphasis(&self.value, if compact { 21.0 } else { 26.0 }));
+                    if let Some(detail) = &self.detail {
+                        ui.label(Text::new(detail).size(12.0).color(MUTED));
+                    }
+                });
+                if let Some(level) = self.level {
+                    let width = ui.available_width();
+                    let (track, _) = ui.allocate_exact_size(vec2(width, 3.0), egui::Sense::hover());
+                    ui.painter().rect_filled(track, 2, FIELD);
+                    ui.painter().rect_filled(
+                        Rect::from_min_size(
+                            track.min,
+                            vec2(width * f32::from(level.min(100)) / 100.0, 3.0),
+                        ),
+                        2,
+                        GREEN,
+                    );
                 }
-                ui.label(emphasis(value, 19.0).color(color))
-                    .on_hover_text(title);
             });
-        });
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1712,47 +1731,27 @@ impl Icon {
     }
 }
 
-fn illustration_backdrop(painter: &egui::Painter, area: Rect, accent: Color) {
-    let columns = (area.width() / 23.0).ceil().max(1.0) as u32;
-    let rows = (area.height() / 23.0).ceil().max(1.0) as u32;
-    let mut glow = egui::Mesh::default();
-    for row in 0..=rows {
-        for column in 0..=columns {
-            let x = column as f32 / columns as f32;
-            let y = row as f32 / rows as f32;
-            let distance = vec2((x - 0.5) * 2.0, (y - 0.54) * 2.0).length();
-            let strength = (1.0 - distance.powi(2)).max(0.0).powi(2);
-            let color = Color::from_rgba_unmultiplied(
-                accent.r(),
-                accent.g(),
-                accent.b(),
-                (65.0 * strength) as u8,
-            );
-            glow.colored_vertex(area.min + vec2(x * area.width(), y * area.height()), color);
-            if row > 0 && column > 0 {
-                let bottom_right = row * (columns + 1) + column;
-                let top_right = bottom_right - columns - 1;
-                glow.add_triangle(top_right - 1, top_right, bottom_right);
-                glow.add_triangle(top_right - 1, bottom_right, bottom_right - 1);
-            }
-        }
-    }
-    painter.add(egui::Shape::mesh(glow));
-    let grid = Stroke::new(1.0, Color::from_white_alpha(7));
-    for column in 1..columns {
-        let x = area.left() + area.width() * column as f32 / columns as f32;
-        painter.line_segment(
-            [Pos2::new(x, area.top()), Pos2::new(x, area.bottom())],
-            grid,
-        );
-    }
-    for row in 1..rows {
-        let y = area.top() + area.height() * row as f32 / rows as f32;
-        painter.line_segment(
-            [Pos2::new(area.left(), y), Pos2::new(area.right(), y)],
-            grid,
-        );
-    }
+fn paint_device_banner(painter: &egui::Painter, background: egui::layers::ShapeIdx, area: Rect) {
+    let mut mesh = egui::Mesh::default();
+    let inner = area.shrink(5.0);
+    mesh.colored_vertex(inner.left_top(), Color::from_rgb(23, 33, 26));
+    mesh.colored_vertex(inner.right_top(), Color::from_rgb(28, 48, 27));
+    mesh.colored_vertex(inner.right_bottom(), Color::from_rgb(15, 25, 18));
+    mesh.colored_vertex(inner.left_bottom(), Color::from_rgb(19, 26, 22));
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    let stripe = Rect::from_min_max(
+        area.left_top() + vec2(1.0, 14.0),
+        area.left_bottom() + vec2(4.0, -14.0),
+    );
+    painter.set(
+        background,
+        egui::Shape::Vec(vec![
+            egui::Shape::rect_filled(area.shrink(1.0), 11, Color::from_rgb(19, 27, 22)),
+            egui::Shape::mesh(mesh),
+            egui::Shape::rect_filled(stripe, 2, GREEN),
+        ]),
+    );
 }
 
 fn logo(painter: &egui::Painter, rect: Rect) {
