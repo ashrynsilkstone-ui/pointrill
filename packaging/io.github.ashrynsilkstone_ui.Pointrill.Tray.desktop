@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Pointrill Tray
+Comment=Live mouse status and profiles
+Comment[de]=Live-Status und Profile der Maus
+Exec=/usr/bin/pointrill --tray
+TryExec=/usr/bin/pointrill
+Icon=input-mouse
+Terminal=false
+StartupNotify=false
+OnlyShowIn=KDE;

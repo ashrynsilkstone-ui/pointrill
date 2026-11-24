@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Pointrill
+Comment=Configure OpenRazer mice and receivers
+Comment[de]=OpenRazer-Mäuse und Empfänger konfigurieren
+Exec=/usr/bin/pointrill
+TryExec=/usr/bin/pointrill
+Icon=input-mouse
+Terminal=false
+Categories=Settings;HardwareSettings;

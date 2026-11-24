@@ -31,7 +31,19 @@ Das Pointrill-Tray kann Profile für das gewählte Gerät übernehmen. Unter **S
 
 Der **Polling-Test** unter **Gerätetest** zeichnet die von Linux empfangenen Bewegungsberichte und die CPU-Gesamtlast der letzten 15 Sekunden auf. Halte die Maus erst kurz still und bewege sie dann schnell hin und her. Pointrill misst die Bewegungsrate in 250-ms-Fenstern. Die CPU-Anzeige umfasst das ganze System. Der Test braucht Lesezugriff auf die Maus-Eingabeschnittstelle.
 
-## Start unter Linux
+## Installation unter Linux
+
+Unter [GitHub Releases](https://github.com/ashrynsilkstone-ui/pointrill/releases) findest du die Pakete für 64-Bit-Prozessoren von Intel und AMD. Lade die Datei für deine Distribution herunter.
+
+| Distribution | Pointrill 0.4.3 installieren |
+| --- | --- |
+| CachyOS | `sudo pacman -U ./pointrill-0.4.3-1-x86_64.pkg.tar.zst` |
+| Fedora | `sudo dnf install ./pointrill-0.4.3-1.x86_64.rpm` |
+| Debian und Ubuntu | `sudo apt install ./pointrill_0.4.3-1_amd64.deb` |
+
+Die Pakete fügen Pointrill zum Anwendungsmenü hinzu. Das Tray startet bei der nächsten Anmeldung in KDE Plasma. Im Tray-Menü kannst du den Autostart für dein Konto abschalten. Installiere und starte einen passenden OpenRazer-Treiber samt Daemon separat. Falls du Pointrill bereits unter `~/.local/bin` installiert hast, prüfe, ob ein eigener Menü- oder Autostart-Eintrag noch auf diese Kopie verweist.
+
+### Aus dem Quellcode bauen
 
 Zum Bauen brauchst du Rust ab Version 1.95. Für den Betrieb brauchst du eine Wayland- oder X11-Sitzung mit OpenGL und den OpenRazer-Treiber samt Daemon für deine Distribution. Starte OpenRazer in deiner Desktop-Sitzung und führe im Projektordner aus.
 
@@ -43,7 +55,7 @@ cargo run --locked --release
 
 Ein Klick auf das Pointrill-Symbol öffnet das Hauptfenster. Das Symbol zeigt die DPI-Stufe als Zahl und den Akkustand als Balken, soweit verfügbar. Der Tooltip zeigt die ausgewählte Maus sowie Akkustand, aktive DPI-Stufe und Pollingrate, soweit verfügbar. Im Kontextmenü kannst du die Maus wählen, Profile übernehmen, den Polling-Test öffnen und den Autostart umschalten. Beim Schließen des Einstellungsfensters bleibt das Tray aktiv.
 
-Installiere das Programm an einem festen Pfad, aktiviere den Autostart und starte das Tray für die laufende Sitzung.
+Wenn du Pointrill selbst gebaut hast, installiere es an einem festen Pfad, aktiviere den Autostart und starte das Tray für die laufende Sitzung.
 
 ```sh
 cargo build --locked --release
@@ -61,6 +73,8 @@ Die flüchtige DPI-Vorschau und die zusätzlichen Radfunktionen der Basilisk V4 
 sudo install -Dm644 packaging/69-pointrill.rules /etc/udev/rules.d/69-pointrill.rules
 sudo udevadm control --reload-rules
 ```
+
+Die Pakete legen dieselbe Regel unter `/usr/share/doc/pointrill/69-pointrill.rules` ab.
 
 ## Teststand
 

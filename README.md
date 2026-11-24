@@ -31,7 +31,19 @@ Pointrill's KDE tray can apply profiles to the selected mouse. Optionally associ
 
 The **Polling test** in **Device test** plots movement reports received by Linux and total CPU load over the last 15 seconds. Start with the mouse still, then move it quickly back and forth. Pointrill measures the movement rate in 250 ms windows. The CPU reading covers the whole system. Direct read access to the mouse input device is required.
 
-## Run on Linux
+## Install on Linux
+
+[GitHub Releases](https://github.com/ashrynsilkstone-ui/pointrill/releases) has 64-bit Intel and AMD packages. Download the file for your distribution.
+
+| Distribution | Install Pointrill 0.4.3 |
+| --- | --- |
+| CachyOS | `sudo pacman -U ./pointrill-0.4.3-1-x86_64.pkg.tar.zst` |
+| Fedora | `sudo dnf install ./pointrill-0.4.3-1.x86_64.rpm` |
+| Debian and Ubuntu | `sudo apt install ./pointrill_0.4.3-1_amd64.deb` |
+
+The packages add Pointrill to the application menu and start the tray at your next KDE Plasma login. The tray menu lets you turn autostart off for your account. Install and start a compatible OpenRazer driver and daemon separately. If you previously installed Pointrill under `~/.local/bin`, check for a user launcher or autostart entry that still points to that copy.
+
+### Build from source
 
 To build Pointrill, install Rust 1.95 or later. You also need a Wayland or X11 desktop with OpenGL and the OpenRazer driver and daemon for your distribution. Start OpenRazer in your desktop session, then run from the checkout.
 
@@ -43,7 +55,7 @@ cargo run --locked --release
 
 Click the Pointrill tray icon to open the main window. The icon shows the DPI stage as a number and the battery level as a bar when available. Its tooltip shows the selected mouse, battery, active DPI stage and polling rate where available. The context menu offers device selection, profile switching, the polling test and the autostart toggle. The tray runs in the background when the settings window is closed.
 
-Install the executable at a stable path, enable autostart and start the tray for this session.
+For a source build, install the executable at a stable path, enable autostart and start the tray for this session.
 
 ```sh
 cargo build --locked --release
@@ -61,6 +73,8 @@ Basilisk V4 Pro hardware DPI preview, its extra wheel controls and the Viper V4 
 sudo install -Dm644 packaging/69-pointrill.rules /etc/udev/rules.d/69-pointrill.rules
 sudo udevadm control --reload-rules
 ```
+
+The packages include the same rule at `/usr/share/doc/pointrill/69-pointrill.rules`.
 
 ## Test status
 

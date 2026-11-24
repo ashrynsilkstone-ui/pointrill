@@ -470,9 +470,44 @@ fn autostart_path() -> Result<PathBuf> {
 }
 
 fn autostart_enabled() -> Result<bool> {
-    match fs::read_to_string(autostart_path()?) {
-        Ok(contents) => Ok(!contents.lines().any(|line| line.trim() == "Hidden=true")),
-        Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+    match read_autostart(&autostart_path()?)? {
+        Some(enabled) => Ok(enabled),
+        None => system_autostart_enabled(),
+    }
+}
+
+fn system_autostart_enabled() -> Result<bool> {
+    let directories = env::var_os("XDG_CONFIG_DIRS")
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "/etc/xdg".into());
+    for directory in env::split_paths(&directories).filter(|path| path.is_absolute()) {
+        let path = directory
+            .join("autostart")
+            .join(format!("{TRAY_ID}.desktop"));
+        if let Some(enabled) = read_autostart(&path)? {
+            return Ok(enabled);
+        }
+    }
+    Ok(false)
+}
+
+fn read_autostart(path: &Path) -> Result<Option<bool>> {
+    match fs::read_to_string(path) {
+        Ok(contents) => {
+            let hidden = contents
+                .lines()
+                .map(str::trim)
+                .skip_while(|line| *line != "[Desktop Entry]")
+                .skip(1)
+                .take_while(|line| !line.starts_with('['))
+                .any(|line| {
+                    line.split_once('=').is_some_and(|(key, value)| {
+                        key.trim() == "Hidden" && value.trim() == "true"
+                    })
+                });
+            Ok(Some(!hidden))
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
 }
@@ -483,7 +518,7 @@ pub fn change_autostart(enabled: bool) -> Result<()> {
 
 fn write_autostart(enabled: bool, executable: &Path) -> Result<()> {
     let path = autostart_path()?;
-    if !enabled {
+    if !enabled && !system_autostart_enabled()? {
         return match fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
@@ -503,8 +538,9 @@ fn write_autostart(enabled: bool, executable: &Path) -> Result<()> {
         .replace('`', "\\\\`")
         .replace('$', "\\\\$")
         .replace('%', "%%");
+    let hidden = if enabled { "" } else { "Hidden=true\n" };
     let desktop = format!(
-        "[Desktop Entry]\nType=Application\nName=Pointrill Tray\nComment=Live mouse status and profiles\nComment[de]=Live-Status und Profile der Maus\nExec=\"{arg}\" --tray\nIcon=input-mouse\nTerminal=false\nStartupNotify=false\nOnlyShowIn=KDE;\n"
+        "[Desktop Entry]\nType=Application\nName=Pointrill Tray\nComment=Live mouse status and profiles\nComment[de]=Live-Status und Profile der Maus\nExec=\"{arg}\" --tray\nIcon=input-mouse\nTerminal=false\nStartupNotify=false\nOnlyShowIn=KDE;\n{hidden}"
     );
     let directory = path.parent().context("Kein Autostart-Ordner")?;
     fs::create_dir_all(directory)?;

@@ -1,0 +1,16 @@
+pkgname=pointrill
+pkgver=${POINTRILL_VERSION:?Set POINTRILL_VERSION}
+pkgrel=1
+pkgdesc='Desktop settings for OpenRazer mice and receivers'
+arch=('x86_64')
+url='https://github.com/ashrynsilkstone-ui/pointrill'
+license=('custom' 'OFL-1.1')
+depends=('glibc>=2.34' 'libgcc' 'libglvnd' 'wayland' 'libxkbcommon'
+         'libx11' 'libxcursor' 'libxi' 'libxrandr')
+optdepends=('openrazer-daemon: access to OpenRazer mice and receivers')
+backup=('etc/xdg/autostart/io.github.ashrynsilkstone_ui.Pointrill.Tray.desktop')
+options=('!debug' '!strip')
+
+package() {
+    cp -a --no-preserve=ownership "$startdir/payload/." "$pkgdir/"
+}
