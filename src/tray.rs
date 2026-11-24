@@ -101,9 +101,9 @@ impl ksni::Tray for PointrillTray {
     }
 
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {
-        [22, 32]
+        [22, 32, 44]
             .into_iter()
-            .map(|size| tray_icon(size, self.view.status.battery))
+            .map(|size| tray_icon(size, self.view.status.battery, self.view.status.dpi_stage))
             .collect()
     }
 
@@ -232,23 +232,31 @@ fn action_item(label: impl AsRef<str>, icon: &str, action: Action) -> MenuItem<P
     .into()
 }
 
-fn tray_icon(size: i32, battery: Option<u8>) -> ksni::Icon {
+const ICON_GRID: i32 = 22;
+const GREEN: [u8; 4] = [255, 122, 241, 43];
+const LOW_BATTERY: [u8; 4] = [255, 255, 130, 119];
+const READOUT: [u8; 4] = [255, 233, 239, 234];
+
+fn tray_icon(size: i32, battery: Option<u8>, dpi_stage: Option<u8>) -> ksni::Icon {
     let mut data = Vec::with_capacity((size * size * 4) as usize);
-    let green = [255, 122, 241, 43];
     let track = [210, 100, 117, 105];
-    let charge = if battery.is_some_and(|level| level <= 15) {
-        [255, 255, 130, 119]
-    } else {
-        green
-    };
+    let low_battery = battery.is_some_and(|level| level <= 15);
+    let charge = if low_battery { LOW_BATTERY } else { GREEN };
+    let compact_mark = battery.is_some() || dpi_stage.is_some();
     for row in 0..size {
         for column in 0..size {
             let x = (column as f32 + 0.5) / size as f32;
             let y = (row as f32 + 0.5) / size as f32;
-            let stroke = ((x - 0.5).abs() - (y - 0.13) * 0.64).abs() < 0.043;
-            let dot = (x - 0.5).hypot(y - 0.63) < 0.073;
-            let pixel = if dot || ((0.13..=0.73).contains(&y) && stroke) {
-                green
+            let (mark_x, mark_y) = if compact_mark {
+                ((x - 0.24) / 0.54 + 0.5, (y - 0.43) / 0.67 + 0.43)
+            } else {
+                (x, y)
+            };
+            let stroke = ((mark_x - 0.5).abs() - (mark_y - 0.13) * 0.64).abs()
+                < if compact_mark { 0.061 } else { 0.043 };
+            let dot = (mark_x - 0.5).hypot(mark_y - 0.63) < 0.073;
+            let pixel = if dot || ((0.13..=0.73).contains(&mark_y) && stroke) {
+                GREEN
             } else if let Some(level) = battery
                 && (0.81..0.92).contains(&y)
                 && (0.17..0.83).contains(&x)
@@ -264,10 +272,76 @@ fn tray_icon(size: i32, battery: Option<u8>) -> ksni::Icon {
             data.extend_from_slice(&pixel);
         }
     }
-    ksni::Icon {
+    let mut icon = ksni::Icon {
         width: size,
         height: size,
         data,
+    };
+    if let Some(stage) = dpi_stage {
+        let y = if battery.is_some() { 3 } else { 7 };
+        let text = if stage < 100 {
+            format!("D{stage}")
+        } else {
+            stage.to_string()
+        };
+        draw_readout(&mut icon, &text, y, GREEN);
+    }
+    if let Some(level) = battery {
+        let level = level.min(100);
+        let y = if dpi_stage.is_some() { 11 } else { 7 };
+        let text = if level == 100 {
+            "100".into()
+        } else {
+            format!("{level}%")
+        };
+        draw_readout(
+            &mut icon,
+            &text,
+            y,
+            if low_battery { LOW_BATTERY } else { READOUT },
+        );
+    }
+    icon
+}
+
+fn draw_readout(icon: &mut ksni::Icon, text: &str, top: i32, color: [u8; 4]) {
+    // A 3×5 pixel font keeps both readings legible at Plasma's small sizes.
+    const NUMERALS: [[u8; 5]; 10] = [
+        [0b111, 0b101, 0b101, 0b101, 0b111],
+        [0b010, 0b110, 0b010, 0b010, 0b111],
+        [0b111, 0b001, 0b111, 0b100, 0b111],
+        [0b111, 0b001, 0b111, 0b001, 0b111],
+        [0b101, 0b101, 0b111, 0b001, 0b001],
+        [0b111, 0b100, 0b111, 0b001, 0b111],
+        [0b111, 0b100, 0b111, 0b101, 0b111],
+        [0b111, 0b001, 0b010, 0b010, 0b010],
+        [0b111, 0b101, 0b111, 0b101, 0b111],
+        [0b111, 0b101, 0b111, 0b001, 0b111],
+    ];
+    let left = ICON_GRID - 4 * text.len() as i32;
+    for (index, byte) in text.bytes().enumerate() {
+        let glyph = match byte {
+            b'0'..=b'9' => NUMERALS[usize::from(byte - b'0')],
+            b'D' => [0b110, 0b101, 0b101, 0b101, 0b110],
+            b'%' => [0b101, 0b001, 0b010, 0b100, 0b101],
+            _ => continue,
+        };
+        let offset = left + 4 * index as i32;
+        for (row, bits) in glyph.into_iter().enumerate() {
+            let y = top + row as i32;
+            for column in 0..3 {
+                if bits & (0b100 >> column) == 0 {
+                    continue;
+                }
+                let x = offset + column;
+                for py in y * icon.height / ICON_GRID..(y + 1) * icon.height / ICON_GRID {
+                    for px in x * icon.width / ICON_GRID..(x + 1) * icon.width / ICON_GRID {
+                        let start = (py * icon.width + px) as usize * 4;
+                        icon.data[start..start + 4].copy_from_slice(&color);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -465,4 +539,22 @@ fn write_autostart(enabled: bool, executable: &Path) -> Result<()> {
         let _ = fs::remove_file(temporary);
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dpi_stage_and_battery_update_separate_readouts() {
+        let original = tray_icon(22, Some(80), Some(1));
+        let stage = tray_icon(22, Some(80), Some(2));
+        let battery = tray_icon(22, Some(10), Some(1));
+        let split = 10 * ICON_GRID as usize * 4;
+
+        assert_ne!(original.data[..split], stage.data[..split]);
+        assert_eq!(original.data[split..], stage.data[split..]);
+        assert_eq!(original.data[..split], battery.data[..split]);
+        assert_ne!(original.data[split..], battery.data[split..]);
+    }
 }

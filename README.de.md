@@ -41,7 +41,7 @@ cargo run --locked --release
 
 ## KDE-Tray und Autostart
 
-Ein Klick auf das Pointrill-Symbol öffnet das Hauptfenster. Der Tooltip zeigt die ausgewählte Maus sowie Akkustand, aktive DPI-Stufe und Pollingrate, soweit verfügbar. Im Kontextmenü kannst du die Maus wählen, Profile übernehmen, den Polling-Test öffnen und den Autostart umschalten. Beim Schließen des Einstellungsfensters bleibt das Tray aktiv.
+Ein Klick auf das Pointrill-Symbol öffnet das Hauptfenster. Im Symbol stehen oben die DPI-Stufe mit D und darunter der Akkustand, sofern die Maus diese Werte meldet. Der Tooltip zeigt die ausgewählte Maus sowie Akkustand, aktive DPI-Stufe und Pollingrate, soweit verfügbar. Im Kontextmenü kannst du die Maus wählen, Profile übernehmen, den Polling-Test öffnen und den Autostart umschalten. Beim Schließen des Einstellungsfensters bleibt das Tray aktiv.
 
 Installiere das Programm an einem festen Pfad, aktiviere den Autostart und starte das Tray für die laufende Sitzung.
 
