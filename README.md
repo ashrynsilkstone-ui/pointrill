@@ -2,7 +2,7 @@
 
 [Deutsch](README.de.md)
 
-Pointrill is a Linux desktop app for mice and receivers supported by OpenRazer. It detects connected devices and shows the controls each device supports.
+Pointrill 0.4.7 is a Rust desktop app for mice and receivers supported by OpenRazer on Linux. It detects connected devices and shows the controls each device supports.
 
 ## Features
 
@@ -18,7 +18,7 @@ Pointrill is a Linux desktop app for mice and receivers supported by OpenRazer. 
 
 | KDE Plasma | GNOME |
 | --- | --- |
-| ![KDE Plasma tray icon with DPI stage and battery bar](docs/screenshots/tray-kde.png) | ![GNOME tray icon and menu with DPI stage and battery level](docs/screenshots/tray-gnome.png) |
+| ![KDE Plasma tray icon and menu with DPI stage and battery level](docs/screenshots/tray-kde.png) | ![GNOME tray icon and menu with DPI stage and battery level](docs/screenshots/tray-gnome.png) |
 
 [GNOME tray at low battery](docs/screenshots/tray-gnome-low-battery.png)
 
