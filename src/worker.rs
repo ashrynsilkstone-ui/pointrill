@@ -83,7 +83,6 @@ impl Session {
             device: snapshot.device.clone(),
             fields: snapshot.fields.clone(),
             volatile_dpi: snapshot.volatile_dpi,
-            product_image: snapshot.product_image.clone(),
         };
         self.current = Some((snapshot, methods));
         Ok(visible)

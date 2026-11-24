@@ -445,18 +445,11 @@ impl OpenRazer {
                 Control::Indicators(labels(&MULTI_INDICATOR)),
             );
         }
-        let advertised = if available(&methods, MISC, "getDeviceImage") {
-            self.get::<String>(&device, MISC, "getDeviceImage").ok()
-        } else {
-            None
-        };
-        let product_image = crate::photos::source(&device, advertised.as_deref());
         Ok((
             Snapshot {
                 fields: builder.fields,
                 device,
                 volatile_dpi,
-                product_image,
             },
             methods,
         ))

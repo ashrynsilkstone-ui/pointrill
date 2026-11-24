@@ -4,7 +4,7 @@
 
 Pointrill is a native Rust desktop app for OpenRazer mice and their receivers on Linux. It detects devices at startup and as they connect. Each device gets the settings its OpenRazer driver exposes.
 
-The device panel loads the corresponding product image from the URL provided by OpenRazer. The Basilisk V4 Pro and Viper V4 Pro use their official store images. Downloaded images are cached for offline use. If a device has no image URL or the image server is unavailable, the panel shows the image status.
+The device panel shows an original Pointrill 3D illustration selected by USB product ID. The illustrations are bundled with the app and work offline. Wired and wireless variants of the same mouse use the same illustration. The [catalog](assets/mice/catalog.json) covers the OpenRazer mouse list and the Basilisk V4 Pro test build. The [Blender script](assets/mice/render.py) rebuilds the illustrations from the catalog.
 
 - **Sensor** covers DPI, DPI stages and polling rates.
 - **Lighting** covers the available effects and brightness controls for each zone.
@@ -31,7 +31,7 @@ The [OpenRazer Mouse Tray](https://github.com/ashrynsilkstone-ui/basilisk-v4-tra
 
 ## Run on Linux
 
-To build Pointrill, install Rust 1.95 or later, pkg-config and the OpenSSL development files. You also need a Wayland or X11 desktop with OpenGL and the OpenRazer driver and daemon for your distribution. Start OpenRazer in your desktop session, then run from the checkout.
+To build Pointrill, install Rust 1.95 or later. You also need a Wayland or X11 desktop with OpenGL and the OpenRazer driver and daemon for your distribution. Start OpenRazer in your desktop session, then run from the checkout.
 
 ```sh
 cargo run --locked --release

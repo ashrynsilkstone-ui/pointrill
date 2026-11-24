@@ -407,7 +407,6 @@ pub struct Snapshot {
     pub device: Device,
     pub fields: Vec<Field>,
     pub volatile_dpi: bool,
-    pub product_image: Option<String>,
 }
 
 pub fn has_free_spin(value: &Value) -> bool {

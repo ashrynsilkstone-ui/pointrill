@@ -1,8 +1,8 @@
 mod bus;
 mod diagnostics;
 mod hid;
+mod illustrations;
 mod model;
-mod photos;
 mod profiles;
 mod ui;
 mod worker;

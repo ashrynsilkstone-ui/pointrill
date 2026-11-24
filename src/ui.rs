@@ -11,7 +11,6 @@ use crate::model::{
     Control, Device, Dpi, Effect, Field, Key, Page, Snapshot, Status, Value, draft_changes,
     has_free_spin,
 };
-use crate::photos::Loader;
 use crate::worker::{Reply, Request, Worker};
 
 const BASE: Color = Color::from_rgb(10, 12, 11);
@@ -42,9 +41,7 @@ pub struct App {
     confirm: Option<Pending>,
     closing: bool,
     ready_to_close: bool,
-    photos: Loader,
-    photo_url: Option<String>,
-    picture: ProductPicture,
+    illustration: Option<DeviceIllustration>,
     capture: Option<(PathBuf, Instant)>,
     library: Vec<crate::profiles::Profile>,
     profile_id: Option<String>,
@@ -59,11 +56,9 @@ pub struct App {
     profile_revision: Option<SystemTime>,
 }
 
-enum ProductPicture {
-    Missing,
-    Loading,
-    Ready(egui::TextureHandle),
-    Failed(String),
+struct DeviceIllustration {
+    id: &'static str,
+    texture: image::ImageResult<egui::TextureHandle>,
 }
 
 enum Pending {
@@ -79,8 +74,6 @@ impl App {
         theme(context);
         let repaint = context.clone();
         let worker = Worker::start(move || repaint.request_repaint());
-        let repaint = context.clone();
-        let photos = Loader::start(move || repaint.request_repaint());
         Self {
             worker,
             devices: vec![],
@@ -98,9 +91,7 @@ impl App {
             confirm: None,
             closing: false,
             ready_to_close: false,
-            photos,
-            photo_url: None,
-            picture: ProductPicture::Missing,
+            illustration: None,
             capture: capture.map(|path| (path, Instant::now() + Duration::from_millis(1400))),
             library: Vec::new(),
             profile_id: None,
@@ -137,7 +128,7 @@ impl App {
         let _ = self.worker.send.send(Request::Open(device));
     }
 
-    fn accept_snapshot(&mut self, snapshot: Snapshot) {
+    fn accept_snapshot(&mut self, ctx: &egui::Context, snapshot: Snapshot) {
         let same = self
             .snapshot
             .as_ref()
@@ -151,7 +142,7 @@ impl App {
         if !same {
             self.status = Status::default();
         }
-        self.set_photo(snapshot.product_image.clone());
+        self.set_illustration(ctx, &snapshot.device);
         self.diagnostics.clear();
         self.profile_revision = crate::profiles::revision(&snapshot.device);
         self.snapshot = Some(snapshot);
@@ -169,39 +160,17 @@ impl App {
         self.next_scan = Instant::now();
     }
 
-    fn set_photo(&mut self, url: Option<String>) {
-        if self.photo_url != url {
-            self.photo_url = url;
-            self.request_photo();
+    fn set_illustration(&mut self, ctx: &egui::Context, device: &Device) {
+        let asset = crate::illustrations::for_device(device);
+        if self.illustration.as_ref().map(|art| art.id) == asset.map(|art| art.id) {
+            return;
         }
-    }
-
-    fn request_photo(&mut self) {
-        self.picture = if let Some(url) = &self.photo_url {
-            if self.photos.requests.send(url.clone()).is_ok() {
-                ProductPicture::Loading
-            } else {
-                ProductPicture::Failed("Der Bildabruf ist nicht erreichbar.".into())
-            }
-        } else {
-            ProductPicture::Missing
-        };
-    }
-
-    fn read_photos(&mut self, context: &egui::Context) {
-        while let Ok((url, result)) = self.photos.replies.try_recv() {
-            if self.photo_url.as_ref() != Some(&url) {
-                continue;
-            }
-            self.picture = match result {
-                Ok(photo) => ProductPicture::Ready(context.load_texture(
-                    url,
-                    photo,
-                    egui::TextureOptions::LINEAR,
-                )),
-                Err(error) => ProductPicture::Failed(format!("{error:#}")),
-            };
-        }
+        self.illustration = asset.map(|art| DeviceIllustration {
+            id: art.id,
+            texture: art
+                .decode()
+                .map(|pixels| ctx.load_texture(art.id, pixels, egui::TextureOptions::LINEAR)),
+        });
     }
 
     fn read_replies(&mut self, context: &egui::Context) {
@@ -224,7 +193,7 @@ impl App {
                             if self.devices.is_empty() {
                                 self.snapshot = None;
                                 self.monitor = None;
-                                self.set_photo(None);
+                                self.illustration = None;
                                 self.draft.clear();
                                 self.notify("Warte auf eine Maus oder einen Empfänger.", false);
                             } else if current != selected.as_ref() || current.is_none() {
@@ -257,7 +226,7 @@ impl App {
                     self.busy = false;
                     match result {
                         Ok(snapshot) => {
-                            self.accept_snapshot(snapshot);
+                            self.accept_snapshot(context, snapshot);
                             self.notify("Gerät bereit", false);
                         }
                         Err(error) => self.notify(format!("{error:#}"), true),
@@ -267,7 +236,7 @@ impl App {
                     self.busy = false;
                     match result {
                         Ok(snapshot) => {
-                            self.accept_snapshot(snapshot);
+                            self.accept_snapshot(context, snapshot);
                             self.notify("Einstellungen übernommen", false);
                         }
                         Err(error) => self.notify(format!("{error:#}"), true),
@@ -277,7 +246,7 @@ impl App {
                     self.busy = false;
                     match result {
                         Ok(snapshot) => {
-                            self.accept_snapshot(snapshot);
+                            self.accept_snapshot(context, snapshot);
                             self.notify(
                                 "LED-Test beendet · Ausgangswerte wiederhergestellt",
                                 false,
@@ -498,11 +467,11 @@ impl App {
                     ui.set_width(settings_width);
                     self.device_settings(ui);
                 });
-                let photo_height = settings.response.rect.height().clamp(354.0, 590.0);
+                let illustration_height = settings.response.rect.height().clamp(354.0, 590.0);
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.x = spacing;
                     ui.set_width(width - gap - settings_width);
-                    self.device_view(ui, photo_height);
+                    self.device_view(ui, illustration_height);
                 });
             });
         } else {
@@ -637,32 +606,32 @@ impl App {
             Page::Wheel if snapshot.device.basilisk() => "Umschalten über die belegte Maustaste",
             Page::Lights => "Entwurf der Beleuchtung",
             Page::Receiver => "Statusanzeigen des Empfängers",
-            _ => "Produktbild",
+            _ => "Pointrill-Illustration",
         };
-        let mut retry = false;
         tile(BASE).show(ui, |ui| {
             let width = ui.available_width();
             let (area, response) =
                 ui.allocate_exact_size(vec2(width, height - 52.0), egui::Sense::hover());
             let painter = ui.painter_at(area);
             let center = area.center();
-            if let ProductPicture::Ready(texture) = &self.picture {
-                photo_backdrop(&painter, area, accent);
+            let texture = self.illustration.as_ref().map(|art| &art.texture);
+            if let Some(Ok(texture)) = texture {
+                illustration_backdrop(&painter, area, accent);
                 let size = texture.size_vec2();
                 let fit = ((area.width() - 36.0) / size.x).min((area.height() - 36.0) / size.y);
-                let photo = Rect::from_center_size(center, size * fit.max(0.0));
+                let bounds = Rect::from_center_size(center, size * fit.max(0.0));
                 painter.image(
                     texture.id(),
-                    photo,
+                    bounds,
                     Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
                     Color::WHITE,
                 );
             } else {
-                let status = match &self.picture {
-                    ProductPicture::Missing => "Kein Produktbild verfügbar",
-                    ProductPicture::Loading => "Produktbild wird geladen …",
-                    ProductPicture::Failed(_) => "Produktbild derzeit nicht erreichbar",
-                    ProductPicture::Ready(_) => unreachable!(),
+                let status = if let Some(Err(error)) = texture {
+                    response.on_hover_text(error.to_string());
+                    "Illustration konnte nicht geladen werden"
+                } else {
+                    "Keine Illustration verfügbar"
                 };
                 painter.text(
                     center,
@@ -672,17 +641,8 @@ impl App {
                     MUTED,
                 );
             }
-            ui.horizontal_wrapped(|ui| {
-                ui.label(Text::new(caption).color(MUTED).size(12.0));
-                if let ProductPicture::Failed(error) = &self.picture {
-                    response.on_hover_text(error);
-                    retry = ui.small_button("Erneut versuchen").clicked();
-                }
-            });
+            ui.label(Text::new(caption).color(MUTED).size(12.0));
         });
-        if retry {
-            self.request_photo();
-        }
     }
 
     fn open_page(&mut self, page: Page) {
@@ -1183,7 +1143,6 @@ impl App {
 impl eframe::App for App {
     fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
         self.read_replies(context);
-        self.read_photos(context);
         self.check_profile_file();
         if let Some(monitor) = &mut self.monitor {
             monitor.poll();
@@ -1287,7 +1246,6 @@ impl eframe::App for App {
             .as_ref()
             .is_some_and(|(_, when)| *when <= Instant::now())
             && self.snapshot.is_some()
-            && !matches!(self.picture, ProductPicture::Loading)
             && let Some((path, _)) = self.capture.take()
         {
             ui.ctx().request_screenshot(move |frame| {
@@ -1754,7 +1712,7 @@ impl Icon {
     }
 }
 
-fn photo_backdrop(painter: &egui::Painter, area: Rect, accent: Color) {
+fn illustration_backdrop(painter: &egui::Painter, area: Rect, accent: Color) {
     let columns = (area.width() / 23.0).ceil().max(1.0) as u32;
     let rows = (area.height() / 23.0).ceil().max(1.0) as u32;
     let mut glow = egui::Mesh::default();
