@@ -27,7 +27,7 @@ Speichere unter **Profile** die aktuellen Geräteeinstellungen. **Änderungen an
 
 Im **Gerätetest** kannst du Tasten und Scrollrichtung live prüfen. Bei fehlendem Zugriff auf Linux-Eingabeereignisse kannst du Klicks und Scrollen im Testfeld prüfen. Unterstützte LED-Zonen leuchten beim Test zwei Sekunden und erhalten danach ihre vorherigen Werte.
 
-Der [OpenRazer Mouse Tray](https://github.com/ashrynsilkstone-ui/basilisk-v4-tray) kann Profile für das gewählte Gerät übernehmen. Unter **Spielzuordnung** kannst du optional den Dateinamen eines Spiels eintragen, etwa `cs2`. Solange der Tray läuft, übernimmt er das Profil beim Start des Spiels. Beim Beenden stellt er die Werte wieder her, die seit dem automatischen Wechsel nicht manuell geändert wurden. Exportdateien enthalten die Mauskonfiguration. Spielzuordnungen werden in Pointrill eingerichtet.
+Das Pointrill-Tray kann Profile für das gewählte Gerät übernehmen. Unter **Spielzuordnung** kannst du optional den Dateinamen eines Spiels eintragen, etwa `cs2`. Solange der Tray läuft, übernimmt er das Profil beim Start des Spiels. Beim Beenden stellt er die Werte wieder her, die seit dem automatischen Wechsel nicht manuell geändert wurden. Exportdateien enthalten die Mauskonfiguration. Spielzuordnungen werden in Pointrill eingerichtet.
 
 Der **Polling-Test** unter **Gerätetest** zeichnet die von Linux empfangenen Bewegungsberichte und die CPU-Gesamtlast der letzten 15 Sekunden auf. Halte die Maus erst kurz still und bewege sie dann schnell hin und her. Pointrill misst die Bewegungsrate in 250-ms-Fenstern. Die CPU-Anzeige umfasst das ganze System. Der Test braucht Lesezugriff auf die Maus-Eingabeschnittstelle.
 
@@ -39,11 +39,17 @@ Zum Bauen brauchst du Rust ab Version 1.95. Für den Betrieb brauchst du eine Wa
 cargo run --locked --release
 ```
 
-Für den Schnellwechsel im KDE-Tray installiere den gebauten Pointrill-Starter im Benutzerkonto.
+## KDE-Tray und Autostart
+
+Ein Klick auf das Pointrill-Symbol öffnet das Hauptfenster. Der Tooltip zeigt die ausgewählte Maus sowie Akkustand, aktive DPI-Stufe und Pollingrate, soweit verfügbar. Im Kontextmenü kannst du die Maus wählen, Profile übernehmen, den Polling-Test öffnen und den Autostart umschalten. Beim Schließen des Einstellungsfensters bleibt das Tray aktiv.
+
+Installiere das Programm an einem festen Pfad, aktiviere den Autostart und starte das Tray für die laufende Sitzung.
 
 ```sh
 cargo build --locked --release
 install -Dm755 target/release/pointrill ~/.local/bin/pointrill
+~/.local/bin/pointrill --enable-autostart
+~/.local/bin/pointrill --tray
 ```
 
 Die aktive DPI-Stufe und die Pollingrate wählst du über direkte Tasten. Klick auf einen DPI-Wert, um ihn einzugeben, oder ziehe ihn, um ihn zu ändern. Mit `cargo run --locked -- --probe` listest du erkannte Geräte und ihre verfügbaren Einstellungen auf.

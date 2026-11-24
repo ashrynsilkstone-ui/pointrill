@@ -37,14 +37,14 @@ struct Preview {
     latest: Dpi,
 }
 
-struct Session {
+pub(crate) struct Session {
     backend: OpenRazer,
     current: Option<(Snapshot, Methods)>,
     preview: Option<Preview>,
 }
 
 impl Session {
-    fn connect() -> Result<Self> {
+    pub(crate) fn connect() -> Result<Self> {
         Ok(Self {
             backend: OpenRazer::connect()?,
             current: None,
@@ -52,7 +52,7 @@ impl Session {
         })
     }
 
-    fn scan(&mut self) -> Result<(Vec<Device>, Option<Device>, Status)> {
+    pub(crate) fn scan(&mut self) -> Result<(Vec<Device>, Option<Device>, Status)> {
         let (devices, restarted) = self.backend.scan()?;
         if let Some((snapshot, _)) = &self.current {
             if !devices.contains(&snapshot.device) {
@@ -88,7 +88,7 @@ impl Session {
         Ok(visible)
     }
 
-    fn open(&mut self, device: Device) -> Result<Snapshot> {
+    pub(crate) fn open(&mut self, device: Device) -> Result<Snapshot> {
         self.revert()?;
         self.settings(device)
     }
@@ -290,10 +290,10 @@ impl Worker {
     }
 }
 
-#[derive(Serialize)]
+#[derive(PartialEq, Eq, Serialize)]
 pub struct TrayProfile {
-    id: String,
-    name: String,
+    pub(crate) id: String,
+    pub(crate) name: String,
 }
 
 fn tray_device(backend: &mut OpenRazer, serial: &str, pid: u16) -> Result<Device> {
@@ -312,14 +312,22 @@ pub fn tray_profiles(serial: &str, pid: u16) -> Result<Vec<TrayProfile>> {
     }
     let mut backend = OpenRazer::connect()?;
     let device = tray_device(&mut backend, serial, pid)?;
-    Ok(list
-        .into_iter()
-        .filter(|profile| profile.model == profiles::model(&device))
+    Ok(profiles_for_device(list, &device))
+}
+
+pub(crate) fn device_profiles(device: &Device) -> Result<Vec<TrayProfile>> {
+    Ok(profiles_for_device(profiles::list()?, device))
+}
+
+fn profiles_for_device(list: Vec<Profile>, device: &Device) -> Vec<TrayProfile> {
+    let model = profiles::model(device);
+    list.into_iter()
+        .filter(|profile| profile.model == model)
         .map(|profile| TrayProfile {
             id: profile.id(),
             name: profile.name,
         })
-        .collect())
+        .collect()
 }
 
 pub fn apply_tray_profile(serial: &str, pid: u16, profile_id: &str) -> Result<String> {

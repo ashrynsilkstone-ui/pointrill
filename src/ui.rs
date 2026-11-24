@@ -2,6 +2,7 @@ mod polling_view;
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant, SystemTime};
 
 use eframe::egui::{
@@ -44,6 +45,7 @@ pub struct App {
     closing: bool,
     ready_to_close: bool,
     capture: Option<(PathBuf, Instant)>,
+    activation: Option<Receiver<Option<Page>>>,
     library: Vec<crate::profiles::Profile>,
     profile_id: Option<String>,
     profile_name: String,
@@ -67,7 +69,12 @@ enum Pending {
 }
 
 impl App {
-    pub fn new(context: &egui::Context, capture: Option<PathBuf>, page: Page) -> Self {
+    pub fn new(
+        context: &egui::Context,
+        capture: Option<PathBuf>,
+        page: Page,
+        activation: Option<Receiver<Option<Page>>>,
+    ) -> Self {
         theme(context);
         let repaint = context.clone();
         let worker = Worker::start(move || repaint.request_repaint());
@@ -89,6 +96,7 @@ impl App {
             closing: false,
             ready_to_close: false,
             capture: capture.map(|path| (path, Instant::now() + Duration::from_millis(1400))),
+            activation,
             library: Vec::new(),
             profile_id: None,
             profile_name: String::new(),
@@ -1108,6 +1116,22 @@ impl App {
 impl eframe::App for App {
     fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
         self.read_replies(context);
+        while let Some(page) = self
+            .activation
+            .as_ref()
+            .and_then(|requests| requests.try_recv().ok())
+        {
+            context.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            context.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+            context.send_viewport_cmd(egui::ViewportCommand::Focus);
+            if let Some(page) = page
+                && self.confirm.is_none()
+                && !self.closing
+                && self.has_page(page)
+            {
+                self.open_page(page);
+            }
+        }
         self.polling.refresh();
         self.check_profile_file();
         if let Some(monitor) = &mut self.monitor {

@@ -50,7 +50,7 @@ pub fn is_receiver(name: &str) -> bool {
     .any(|word| name.contains(word))
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub struct Status {
     pub battery: Option<u8>,
     pub charging: bool,

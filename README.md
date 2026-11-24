@@ -27,7 +27,7 @@ Save the mouse's current settings on the **Profile** page. Preview a profile to 
 
 The **Gerätetest** (Device test) page shows button presses and scroll directions. If Linux input events are inaccessible, use the test area for clicks and scrolling delivered to the window. Testing a supported LED zone lights it for two seconds and restores the prior values afterward.
 
-The [OpenRazer Mouse Tray](https://github.com/ashrynsilkstone-ui/basilisk-v4-tray) can apply profiles to the selected mouse. Optionally associate a profile with a game by entering its executable name, such as `cs2`. While the tray is running, it applies the profile when the game starts. When the game exits, it restores values that have not been manually changed since the switch. JSON exports contain the mouse settings. Game associations are configured locally in Pointrill.
+Pointrill's KDE tray can apply profiles to the selected mouse. Optionally associate a profile with a game by entering its executable name, such as `cs2`. While the tray is running, it applies the profile when the game starts. When the game exits, it restores values that have not been manually changed since the switch. JSON exports contain the mouse settings. Game associations are configured locally in Pointrill.
 
 The **Polling test** in **Device test** plots movement reports received by Linux and total CPU load over the last 15 seconds. Start with the mouse still, then move it quickly back and forth. Pointrill measures the movement rate in 250 ms windows. The CPU reading covers the whole system. Direct read access to the mouse input device is required.
 
@@ -39,11 +39,17 @@ To build Pointrill, install Rust 1.95 or later. You also need a Wayland or X11 d
 cargo run --locked --release
 ```
 
-Install the user executable to enable profile switching in the KDE tray.
+## KDE tray and autostart
+
+Click the Pointrill tray icon to open the main window. Its tooltip shows the selected mouse, battery, active DPI stage and polling rate where available. The context menu offers device selection, profile switching, the polling test and the autostart toggle. The tray runs in the background when the settings window is closed.
+
+Install the executable at a stable path, enable autostart and start the tray for this session.
 
 ```sh
 cargo build --locked --release
 install -Dm755 target/release/pointrill ~/.local/bin/pointrill
+~/.local/bin/pointrill --enable-autostart
+~/.local/bin/pointrill --tray
 ```
 
 The active DPI stage and polling rate are direct buttons. Click a DPI number to type it, or drag the number to adjust it. Run `cargo run --locked -- --probe` to list the connected devices and their available settings.

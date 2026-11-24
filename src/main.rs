@@ -1,9 +1,11 @@
 mod bus;
 mod diagnostics;
 mod hid;
+mod instance;
 mod model;
 mod polling;
 mod profiles;
+mod tray;
 mod ui;
 mod worker;
 
@@ -17,6 +19,9 @@ fn main() -> anyhow::Result<()> {
         .collect::<Vec<_>>()
         .as_slice()
     {
+        ["--tray"] => return tray::run(),
+        ["--enable-autostart"] => return tray::change_autostart(true),
+        ["--disable-autostart"] => return tray::change_autostart(false),
         ["--list-profiles", serial, pid] => {
             println!(
                 "{}",
@@ -58,22 +63,42 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
     let capture = std::env::var_os("POINTRILL_SCREENSHOT").map(std::path::PathBuf::from);
-    let page = match arguments.first().map(String::as_str) {
-        Some("--profiles") => model::Page::Profiles,
-        Some("--diagnostics") => model::Page::Diagnostics,
-        _ => model::Page::Sensor,
+    let requested_page = match arguments.first().map(String::as_str) {
+        Some("--profiles") => Some(model::Page::Profiles),
+        Some("--diagnostics") => Some(model::Page::Diagnostics),
+        _ => None,
     };
+    let (_window_connection, requests) = if capture.is_some() {
+        (None, None)
+    } else {
+        match instance::main_window(requested_page) {
+            Ok(Some(window)) => (Some(window.connection), Some(window.requests)),
+            Ok(None) => return Ok(()),
+            Err(error) => {
+                eprintln!("Pointrill-Fenstersteuerung: {error:#}");
+                (None, None)
+            }
+        }
+    };
+    let page = requested_page.unwrap_or(model::Page::Sensor);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1260.0, 800.0])
             .with_min_inner_size([820.0, 580.0])
-            .with_app_id("io.github.ashrynsilkstone_ui.Pointrill"),
+            .with_app_id(instance::APP_ID),
         ..Default::default()
     };
     eframe::run_native(
         "Pointrill",
         options,
-        Box::new(move |context| Ok(Box::new(ui::App::new(&context.egui_ctx, capture, page)))),
+        Box::new(move |context| {
+            Ok(Box::new(ui::App::new(
+                &context.egui_ctx,
+                capture,
+                page,
+                requests,
+            )))
+        }),
     )
     .map_err(|error| anyhow::anyhow!("{error}"))
 }
