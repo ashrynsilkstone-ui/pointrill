@@ -58,6 +58,8 @@ sudo udevadm control --reload-rules
 
 Privater Teststand. Die Basilisk V4 Pro wurde unter CachyOS über HyperSpeed geprüft. Bei der DPI-Vorschau und beim Verwerfen blieben die gespeicherten Stufen erhalten. Änderungen der Pollingrate erreichten die Maus erst bei **Übernehmen**. Danach wurde der Ausgangswert wiederhergestellt. Der OpenRazer-Simulator lieferte 123 Maus-Endpunkte, die Pointrill alle erkannte. Dazu gehörten die Viper V4 Pro per Kabel und per Empfänger. Beim Hardwaretest unter CachyOS wurden alle drei LED-Modi des Viper-V4-Pro-Dongles ausgelesen, ein Modus über **Übernehmen** geändert und die ursprünglichen Einstellungen wiederhergestellt.
 
+Pointrill 0.3.0 wurde außerdem mit dem HyperSpeed-Empfänger der Basilisk V4 Pro (`1532:00E3`) und OpenRazer-Build `31453438` geprüft. Das Testprofil stellte die Pollingrate auf 500 Hz und den Unterboden auf statisch Orange bei 53 %. Die automatische Sicherung stellte 1000 Hz, den Effekt **Aus** und den ursprünglichen Helligkeitswert von 1 % wieder her. Pollingrate und Helligkeit wurden aus dem Treiber ausgelesen, der Effekt wurde über OpenRazer geprüft. Die Smart-Reel-Empfindlichkeit blieb auf Stufe 3. Pointrill meldete sie beim Wiederherstellen als übersprungen.
+
 ```sh
 cargo test --locked
 ```

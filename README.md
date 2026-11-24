@@ -58,6 +58,8 @@ sudo udevadm control --reload-rules
 
 This is a private test project. The Basilisk V4 Pro was tested on CachyOS over HyperSpeed. The DPI preview and discard left the saved stages intact. Polling changes reached the mouse on Apply and were restored after testing. All 123 mouse endpoints in the OpenRazer simulator were discovered, including the wired and wireless Viper V4 Pro. A hardware test on CachyOS read all three Viper V4 Pro receiver LED modes, changed one through Apply, and restored the original settings.
 
+Pointrill 0.3.0 was also tested on the Basilisk V4 Pro HyperSpeed receiver (`1532:00E3`) with OpenRazer build `31453438`. The test profile changed the polling rate to 500 Hz and set the underglow to static orange at 53%. Applying the automatic backup restored 1000 Hz, the off effect and the original brightness of 1%. Polling and brightness were read back from the driver, and the effect was checked through OpenRazer. Smart Reel sensitivity remained at level 3. Pointrill reported it as skipped during restoration.
+
 ```sh
 cargo test --locked
 ```
