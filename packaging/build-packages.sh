@@ -31,9 +31,11 @@ payload="$work_dir/payload"
 install -Dm755 "$binary" "$payload/usr/bin/pointrill"
 install -Dm644 "$package_dir/$app_id.desktop" "$payload/usr/share/applications/$app_id.desktop"
 install -Dm644 "$package_dir/$app_id.Tray.desktop" "$payload/etc/xdg/autostart/$app_id.Tray.desktop"
-install -Dm644 -t "$payload/usr/share/doc/pointrill" \
+doc_dir="$payload/usr/share/doc/pointrill"
+install -Dm644 -t "$doc_dir" \
     "$source_dir/README.md" "$source_dir/README.de.md" "$package_dir/69-pointrill.rules" \
     "$source_dir/assets/fonts/barlow/OFL.txt"
+install -Dm644 -t "$doc_dir/docs/screenshots" "$source_dir/docs/screenshots/"*.png
 
 install -m644 "$package_dir/PKGBUILD" "$work_dir/"
 (
