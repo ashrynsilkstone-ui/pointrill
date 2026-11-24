@@ -22,13 +22,27 @@ Installiere und starte den OpenRazer-Treiber samt Daemon für dein Gerät. Lade 
 | Fedora | `sudo dnf install ./pointrill-0.4.3-1.x86_64.rpm` |
 | Debian und Ubuntu | `sudo apt install ./pointrill_0.4.3-1_amd64.deb` |
 
-Öffne **Pointrill** im Anwendungsmenü. Das Tray startet bei der nächsten Anmeldung in KDE Plasma.
+Öffne **Pointrill** im Anwendungsmenü.
 
-Einige Einstellungen der Basilisk V4 Pro und Viper V4 Pro benötigen direkten USB-Zugriff. Falls der Zugriff fehlt, installiere die optionale Regel und stecke das Gerät neu ein.
+### KDE-Tray und Autostart
+
+Die Pakete aktivieren das Tray für die nächste Anmeldung in KDE Plasma. Mit einem Rechtsklick auf das Tray-Symbol kannst du **Bei der KDE-Anmeldung starten** umschalten. Im Terminal geht das mit `pointrill --enable-autostart` oder `pointrill --disable-autostart`. Mit `pointrill --tray` startest du das Tray in der laufenden Sitzung.
+
+Wenn du Pointrill selbst baust, brauchst du Rust ab Version 1.95. Installiere das Programm an einem festen Pfad, bevor du den Autostart aktivierst.
+
+```sh
+cargo build --locked --release
+install -Dm755 target/release/pointrill ~/.local/bin/pointrill
+~/.local/bin/pointrill --enable-autostart
+```
+
+### Optionaler USB-Zugriff
+
+Einige Geräteeinstellungen benötigen direkten USB-Zugriff. Falls der Zugriff fehlt, installiere die optionale Regel und stecke das Gerät neu ein.
 
 ```sh
 sudo install -Dm644 /usr/share/doc/pointrill/69-pointrill.rules /etc/udev/rules.d/69-pointrill.rules
 sudo udevadm control --reload-rules
 ```
 
-Aus dem Quellcode startest du Pointrill mit `cargo run --locked --release` und Rust ab Version 1.95.
+Im Quellcode findest du die Regel unter `packaging/69-pointrill.rules`.
