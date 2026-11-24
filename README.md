@@ -7,6 +7,7 @@ Pointrill is a Linux desktop app for mice and receivers supported by OpenRazer. 
 ## Features
 
 - Adjust DPI stages, polling rate, lighting zones, scroll wheel modes and supported receiver LEDs. Smart Reel and scroll acceleration require a wheel-mode selection that includes free spin.
+- Set brightness to Off or one of six levels. Under **Lighting**, use the device brightness control to set all available zones together.
 - View battery and charging status, and adjust idle time and low-battery warnings where supported.
 - Preview and apply changes, save profiles, restore previous settings and switch profiles automatically when games start.
 - Test mouse input and see the received polling rate and CPU load live.
@@ -22,13 +23,13 @@ Pointrill is a Linux desktop app for mice and receivers supported by OpenRazer. 
 
 ## Installation
 
-Install and start the OpenRazer driver and daemon for your device. Download the matching 64-bit package. [Pointrill 0.4.5 downloads](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.5)
+Install and start the OpenRazer driver and daemon for your device. Download the matching 64-bit package. [Pointrill 0.4.6 downloads](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.6)
 
 | Distribution | Install command |
 | --- | --- |
-| CachyOS | `sudo pacman -U ./pointrill-0.4.5-1-x86_64.pkg.tar.zst` |
-| Fedora | `sudo dnf install ./pointrill-0.4.5-1.x86_64.rpm` |
-| Debian and Ubuntu | `sudo apt install ./pointrill_0.4.5-1_amd64.deb` |
+| CachyOS | `sudo pacman -U ./pointrill-0.4.6-1-x86_64.pkg.tar.zst` |
+| Fedora | `sudo dnf install ./pointrill-0.4.6-1.x86_64.rpm` |
+| Debian and Ubuntu | `sudo apt install ./pointrill_0.4.6-1_amd64.deb` |
 
 Open **Pointrill** from the application menu.
 

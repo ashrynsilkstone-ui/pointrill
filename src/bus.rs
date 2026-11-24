@@ -683,7 +683,9 @@ impl OpenRazer {
             .collect::<Result<_>>()?;
         let mut attempted = Vec::new();
         for (i, (key, value)) in edits.iter().enumerate() {
-            if matches_read(key, &history[i], value) {
+            if history[i] == *value
+                || (!matches!(key, Key::Brightness(_)) && matches_read(key, &history[i], value))
+            {
                 continue;
             }
             attempted.push(i);
@@ -802,7 +804,9 @@ fn labels(labels: &[&str]) -> Vec<(i32, String)> {
 
 pub(crate) fn matches_read(key: &Key, actual: &Value, expected: &Value) -> bool {
     match (key, actual, expected) {
-        (Key::Brightness(_), Value::Number(a), Value::Number(b)) => (a - b).abs() <= 1,
+        (Key::Brightness(_), Value::Number(a), Value::Number(b)) => {
+            (a - b).abs() <= 1 && (*a == 0) == (*b == 0)
+        }
         (
             Key::Light(_),
             Value::Light {

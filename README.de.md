@@ -7,6 +7,7 @@ Pointrill ist eine Linux-Anwendung für Mäuse und Empfänger, die OpenRazer unt
 ## Funktionen
 
 - DPI-Stufen, Pollingrate, Beleuchtungszonen, Scrollradmodi und unterstützte Empfänger-LEDs einstellen. Smart Reel und Scrollbeschleunigung setzen eine Modusauswahl mit Freilauf voraus.
+- Die Helligkeit auf Aus oder eine von sechs Stufen stellen. Unter **Beleuchtung → Gerät** lassen sich alle verfügbaren Zonen gemeinsam einstellen.
 - Akkustand und Ladestatus ansehen und, sofern verfügbar, Ruhezustand und Akkuwarnung einstellen.
 - Änderungen als Vorschau prüfen und übernehmen, Profile speichern, frühere Einstellungen wiederherstellen und beim Spielstart automatisch das Profil wechseln.
 - Mauseingaben testen und die empfangene Pollingrate sowie die CPU-Last live sehen.
@@ -22,13 +23,13 @@ Pointrill ist eine Linux-Anwendung für Mäuse und Empfänger, die OpenRazer unt
 
 ## Installation
 
-Installiere und starte den OpenRazer-Treiber samt Daemon für dein Gerät. Lade das passende 64-Bit-Paket herunter. [Pointrill 0.4.5 herunterladen](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.5)
+Installiere und starte den OpenRazer-Treiber samt Daemon für dein Gerät. Lade das passende 64-Bit-Paket herunter. [Pointrill 0.4.6 herunterladen](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.6)
 
 | Distribution | Installationsbefehl |
 | --- | --- |
-| CachyOS | `sudo pacman -U ./pointrill-0.4.5-1-x86_64.pkg.tar.zst` |
-| Fedora | `sudo dnf install ./pointrill-0.4.5-1.x86_64.rpm` |
-| Debian und Ubuntu | `sudo apt install ./pointrill_0.4.5-1_amd64.deb` |
+| CachyOS | `sudo pacman -U ./pointrill-0.4.6-1-x86_64.pkg.tar.zst` |
+| Fedora | `sudo dnf install ./pointrill-0.4.6-1.x86_64.rpm` |
+| Debian und Ubuntu | `sudo apt install ./pointrill_0.4.6-1_amd64.deb` |
 
 Öffne **Pointrill** im Anwendungsmenü.
 

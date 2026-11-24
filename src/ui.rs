@@ -537,6 +537,8 @@ impl App {
             ui.spacing_mut().interact_size.y = 27.0;
         }
         let padding = if compact { 9 } else { 14 };
+        let mut touched = self.page == Page::Lights
+            && device_brightness(ui, &snapshot.fields, &mut self.draft, padding);
         let mut visible: Vec<_> = snapshot
             .fields
             .iter()
@@ -544,7 +546,6 @@ impl App {
             .enumerate()
             .filter(|(_, (field, _))| field.page == self.page && (free_spin || !field.key.assist()))
             .collect();
-        let mut touched = false;
         let mut card = |ui: &mut Ui, (index, (field, edit)): (usize, (&Field, &mut Value))| {
             ui.push_id(index, |ui| {
                 tile(PANEL).inner_margin(padding).show(ui, |ui| {
@@ -1316,6 +1317,13 @@ fn editor(ui: &mut Ui, field: &Field, value: &mut Value) -> bool {
             polling_choices(ui, options, number);
         }
         (Control::Choices(options), Value::Number(number)) => options_row(ui, options, number),
+        (Control::Range { .. }, Value::Number(number))
+            if matches!(field.key, Key::Brightness(_)) =>
+        {
+            if let Some(level) = brightness_steps(ui, Some(*number)) {
+                *number = level;
+            }
+        }
         (Control::Range { min, max, unit }, Value::Number(number)) => {
             ui.add(
                 egui::Slider::new(number, *min..=*max)
@@ -1362,6 +1370,76 @@ fn editor(ui: &mut Ui, field: &Field, value: &mut Value) -> bool {
         _ => (),
     }
     *value != before
+}
+
+fn device_brightness(ui: &mut Ui, fields: &[Field], draft: &mut [Value], padding: i8) -> bool {
+    let mut zones: Vec<_> = fields
+        .iter()
+        .zip(draft)
+        .filter_map(|(field, value)| match (&field.key, value) {
+            (Key::Brightness(Some(_)), Value::Number(percent)) => Some(percent),
+            _ => None,
+        })
+        .collect();
+    let Some(first) = zones.first().map(|percent| **percent) else {
+        return false;
+    };
+    let current = zones
+        .iter()
+        .all(|percent| **percent == first)
+        .then_some(first);
+    let selected = tile(PANEL)
+        .inner_margin(padding)
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.label(emphasis("Gerät · Helligkeit aller Zonen", 17.0));
+            brightness_steps(ui, current)
+        })
+        .inner;
+    ui.add_space(4.0);
+    if let Some(percent) = selected {
+        let changed = zones.iter().any(|value| **value != percent);
+        for value in &mut zones {
+            **value = percent;
+        }
+        return changed;
+    }
+    false
+}
+
+fn brightness_steps(ui: &mut Ui, current: Option<i32>) -> Option<i32> {
+    const LEVELS: [(i32, &str); 7] = [
+        (0, "Aus"),
+        (17, "1"),
+        (33, "2"),
+        (50, "3"),
+        (67, "4"),
+        (83, "5"),
+        (100, "6 · 100 %"),
+    ];
+    match current {
+        None => {
+            ui.label(Text::new("Unterschiedliche Helligkeit").color(MUTED));
+        }
+        Some(percent) if LEVELS.iter().all(|(level, _)| *level != percent) => {
+            ui.label(Text::new(format!("Aktuell · {percent} %")).color(MUTED));
+        }
+        Some(_) => {}
+    }
+    let size = (48.0, if compact_height(ui) { 29.0 } else { 35.0 });
+    ui.horizontal_wrapped(|ui| {
+        let mut selected = None;
+        for (percent, label) in LEVELS {
+            if button(ui, label, current == Some(percent), size)
+                .on_hover_text(format!("{percent} %"))
+                .clicked()
+            {
+                selected = Some(percent);
+            }
+        }
+        selected
+    })
+    .inner
 }
 
 fn stages(ui: &mut Ui, max: u16, active: &mut u8, points: &mut Vec<Dpi>) {
