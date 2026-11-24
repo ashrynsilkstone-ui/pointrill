@@ -202,6 +202,14 @@ impl OpenRazer {
         let dpi = available(methods, SENSOR, "getDPI")
             .then(|| self.dpi(device).ok())
             .flatten();
+        let dpi_stage = available(methods, SENSOR, "getDPIStages")
+            .then(|| {
+                self.get::<(u8, Vec<Dpi>)>(device, SENSOR, "getDPIStages")
+                    .ok()
+            })
+            .flatten()
+            .filter(|(active, points)| *active > 0 && usize::from(*active) <= points.len())
+            .map(|(active, _)| active);
         let polling = available(methods, MISC, "getPollRate")
             .then(|| self.get::<i32>(device, MISC, "getPollRate").ok())
             .flatten()
@@ -210,6 +218,7 @@ impl OpenRazer {
             battery,
             charging,
             dpi,
+            dpi_stage,
             polling,
         }
     }
@@ -798,7 +807,7 @@ fn labels(labels: &[&str]) -> Vec<(i32, String)> {
         .collect()
 }
 
-fn matches_read(key: &Key, actual: &Value, expected: &Value) -> bool {
+pub(crate) fn matches_read(key: &Key, actual: &Value, expected: &Value) -> bool {
     match (key, actual, expected) {
         (Key::Brightness(_), Value::Number(a), Value::Number(b)) => (a - b).abs() <= 1,
         (

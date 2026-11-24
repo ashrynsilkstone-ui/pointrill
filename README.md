@@ -10,6 +10,8 @@ The device panel loads the corresponding product image from the URL provided by 
 - **Lighting** covers the available effects and brightness controls for each zone.
 - **Scroll wheel** covers supported wheel settings. On a Basilisk V4 Pro, the assigned button cycles through the selected modes. Smart Reel and acceleration are available when the selection includes free spin.
 - **Battery and receiver** cover charging status, the idle timeout, low-battery warning and supported receiver LEDs.
+- **Profiles** store settings by mouse model. Wired and wireless connections share profiles when OpenRazer reports the same model.
+- **Device test** shows USB detection, OpenRazer status, access and the active DPI stage. The diagnostic report can be copied.
 
 The Viper V4 Pro is listed as a mouse over USB (`1532:00E5`) or through its HyperSpeed receiver (`1532:00E6`). With the receiver connected, the **Dongle** tab lets you set any of its three LEDs to off, battery level, connection quality, polling rate, or DPI stage. Pointrill uses OpenRazer's LED API when available and can also use the receiver's USB control interface if the desktop session has access. [OpenRazer device support](https://github.com/openrazer/openrazer/pull/2751) · [Receiver LED captures](https://github.com/openrazer/openrazer/issues/2760)
 
@@ -17,7 +19,15 @@ The Viper V4 Pro is listed as a mouse over USB (`1532:00E5`) or through its Hype
 
 Edits appear immediately in the window. A Basilisk V4 Pro with HID access also receives a temporary DPI preview. Pointrill restores the previous DPI when the preview is discarded or the app closes normally, provided the device is still reachable and still reports the preview value.
 
-**Übernehmen** (Apply) is the only action that writes the draft through a persistence-capable command. A setting's persistence after unplugging depends on the device and the OpenRazer driver. Pointrill reads the result back and attempts to restore prior values if an apply fails partway through.
+Use **Übernehmen** (Apply) to write a draft through a persistence-capable command. A setting's persistence after unplugging depends on the device and the OpenRazer driver. Pointrill reads the result back and attempts to restore prior values if an apply fails partway through.
+
+## Profiles and device tests
+
+Save the mouse's current settings on the **Profile** page. Preview a profile to see the current and target values before applying. Restore the previous state to preview the last manual change for that connection. Profiles can be imported and exported as JSON. Pointrill reports values that the selected connection cannot apply.
+
+The **Gerätetest** (Device test) page shows button presses and scroll directions. If Linux input events are inaccessible, use the test area for clicks and scrolling delivered to the window. Testing a supported LED zone lights it for two seconds and restores the prior values afterward.
+
+The [OpenRazer Mouse Tray](https://github.com/ashrynsilkstone-ui/basilisk-v4-tray) can apply profiles to the selected mouse. Optionally associate a profile with a game by entering its executable name, such as `cs2`. While the tray is running, it applies the profile when the game starts. When the game exits, it restores values that have not been manually changed since the switch. JSON exports contain the mouse settings. Game associations are configured locally in Pointrill.
 
 ## Run on Linux
 
@@ -25,6 +35,13 @@ To build Pointrill, install Rust 1.95 or later, pkg-config and the OpenSSL devel
 
 ```sh
 cargo run --locked --release
+```
+
+Install the user executable to enable profile switching in the KDE tray.
+
+```sh
+cargo build --locked --release
+install -Dm755 target/release/pointrill ~/.local/bin/pointrill
 ```
 
 The active DPI stage and polling rate are direct buttons. Click a DPI number to type it, or drag the number to adjust it. Run `cargo run --locked -- --probe` to list the connected devices and their available settings.

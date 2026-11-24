@@ -1,14 +1,46 @@
 mod bus;
+mod diagnostics;
 mod hid;
 mod model;
 mod photos;
+mod profiles;
 mod ui;
 mod worker;
 
 use eframe::egui;
 
 fn main() -> anyhow::Result<()> {
-    if std::env::args().any(|argument| argument == "--probe") {
+    let arguments: Vec<_> = std::env::args().skip(1).collect();
+    match arguments
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["--list-profiles", serial, pid] => {
+            println!(
+                "{}",
+                serde_json::to_string(&worker::tray_profiles(
+                    serial,
+                    u16::from_str_radix(pid, 16)?
+                )?)?
+            );
+            return Ok(());
+        }
+        ["--apply-profile", serial, pid, id] => {
+            println!(
+                "{}",
+                worker::apply_tray_profile(serial, u16::from_str_radix(pid, 16)?, id)?
+            );
+            return Ok(());
+        }
+        ["--auto-profile-tick"] => {
+            println!("{}", serde_json::to_string(&worker::automatic_tick()?)?);
+            return Ok(());
+        }
+        _ => {}
+    }
+    if arguments.iter().any(|argument| argument == "--probe") {
         let mut bus = bus::OpenRazer::connect()?;
         let (devices, _) = bus.scan()?;
         for device in devices {
@@ -26,6 +58,11 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
     let capture = std::env::var_os("POINTRILL_SCREENSHOT").map(std::path::PathBuf::from);
+    let page = match arguments.first().map(String::as_str) {
+        Some("--profiles") => model::Page::Profiles,
+        Some("--diagnostics") => model::Page::Diagnostics,
+        _ => model::Page::Sensor,
+    };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1260.0, 800.0])
@@ -36,7 +73,7 @@ fn main() -> anyhow::Result<()> {
     eframe::run_native(
         "Pointrill",
         options,
-        Box::new(move |context| Ok(Box::new(ui::App::new(&context.egui_ctx, capture)))),
+        Box::new(move |context| Ok(Box::new(ui::App::new(&context.egui_ctx, capture, page)))),
     )
     .map_err(|error| anyhow::anyhow!("{error}"))
 }

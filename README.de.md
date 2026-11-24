@@ -10,6 +10,8 @@ Die Geräteansicht lädt das zum Modell passende Produktbild über die Adresse a
 - **Beleuchtung** enthält die verfügbaren Effekte und Helligkeitsregler pro Zone.
 - **Scrollrad** enthält die Radfunktionen des Geräts. Bei der Basilisk V4 Pro durchläuft die belegte Taste die gewählten Modi. Smart Reel und Scrollbeschleunigung stehen bei Kombinationen mit Freilauf zur Verfügung.
 - **Akku und Dongle** zeigen Ladezustand, Ruhezustand, Akkuwarnung und unterstützte Status-LEDs.
+- **Profile** speichert Einstellungen pro Mausmodell. Kabel und Empfänger können dieselbe Sammlung verwenden, wenn OpenRazer sie als dasselbe Modell erkennt.
+- **Gerätetest** zeigt USB-Erkennung, OpenRazer-Status, Zugriff und die aktive DPI-Stufe. Der Diagnosebericht ist kopierbar.
 
 Die Viper V4 Pro erscheint als Maus über USB (`1532:00E5`) oder mit ihrem HyperSpeed-Dongle (`1532:00E6`). Mit angeschlossenem Empfänger lassen sich im Reiter **Dongle** alle drei LEDs einzeln auf Aus, Akkustand, Verbindungsqualität, Pollingrate oder DPI-Stufe stellen. Pointrill verwendet dafür nach Möglichkeit OpenRazer und kann bei vorhandenem Zugriff auch die USB-Steuerschnittstelle des Empfängers nutzen. [OpenRazer-Geräteunterstützung](https://github.com/openrazer/openrazer/pull/2751) · [Messdaten zu den LED-Modi](https://github.com/openrazer/openrazer/issues/2760)
 
@@ -19,12 +21,27 @@ Die Viper V4 Pro erscheint als Maus über USB (`1532:00E5`) oder mit ihrem Hyper
 
 Erst **Übernehmen** schreibt den Entwurf über die Speicherbefehle des Geräts oder über OpenRazer. Welche Werte nach dem Abziehen erhalten bleiben, hängt vom Gerät und Treiber ab. Pointrill liest die übernommenen Werte zurück und versucht bei einem Abbruch, bereits geänderte Werte wiederherzustellen.
 
+## Profile und Gerätetest
+
+Speichere unter **Profile** die aktuellen Geräteeinstellungen. **Änderungen ansehen** zeigt Ziel und Ausgangswert vor dem Übernehmen. **Letzten Stand wiederherstellen** lädt den Stand vor der letzten manuellen Änderung an der gewählten Verbindung in die Vorschau. JSON-Dateien lassen sich importieren und exportieren. Pointrill zeigt Werte an, die der gewählte Anschluss nicht unterstützt.
+
+Im **Gerätetest** kannst du Tasten und Scrollrichtung live prüfen. Bei fehlendem Zugriff auf Linux-Eingabeereignisse kannst du Klicks und Scrollen im Testfeld prüfen. Unterstützte LED-Zonen leuchten beim Test zwei Sekunden und erhalten danach ihre vorherigen Werte.
+
+Der [OpenRazer Mouse Tray](https://github.com/ashrynsilkstone-ui/basilisk-v4-tray) kann Profile für das gewählte Gerät übernehmen. Unter **Spielzuordnung** kannst du optional den Dateinamen eines Spiels eintragen, etwa `cs2`. Solange der Tray läuft, übernimmt er das Profil beim Start des Spiels. Beim Beenden stellt er die Werte wieder her, die seit dem automatischen Wechsel nicht manuell geändert wurden. Exportdateien enthalten die Mauskonfiguration. Spielzuordnungen werden in Pointrill eingerichtet.
+
 ## Start unter Linux
 
 Zum Bauen brauchst du Rust ab Version 1.95, pkg-config und die OpenSSL-Entwicklungsdateien. Für den Betrieb brauchst du eine Wayland- oder X11-Sitzung mit OpenGL und den OpenRazer-Treiber samt Daemon für deine Distribution. Starte OpenRazer in deiner Desktop-Sitzung und führe im Projektordner aus.
 
 ```sh
 cargo run --locked --release
+```
+
+Für den Schnellwechsel im KDE-Tray installiere den gebauten Pointrill-Starter im Benutzerkonto.
+
+```sh
+cargo build --locked --release
+install -Dm755 target/release/pointrill ~/.local/bin/pointrill
 ```
 
 Die aktive DPI-Stufe und die Pollingrate wählst du über direkte Tasten. Klick auf einen DPI-Wert, um ihn einzugeben, oder ziehe ihn, um ihn zu ändern. Mit `cargo run --locked -- --probe` listest du erkannte Geräte und ihre verfügbaren Einstellungen auf.

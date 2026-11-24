@@ -1,5 +1,6 @@
-use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant, SystemTime};
 
 use eframe::egui::{
     self, AtomExt as _, Color32 as Color, FontId, Pos2, Rect, RichText as Text, Stroke, Ui, Vec2,
@@ -7,7 +8,8 @@ use eframe::egui::{
 };
 
 use crate::model::{
-    Control, Device, Dpi, Field, Key, Page, Snapshot, Status, Value, draft_changes, has_free_spin,
+    Control, Device, Dpi, Effect, Field, Key, Page, Snapshot, Status, Value, draft_changes,
+    has_free_spin,
 };
 use crate::photos::Loader;
 use crate::worker::{Reply, Request, Worker};
@@ -44,6 +46,17 @@ pub struct App {
     photo_url: Option<String>,
     picture: ProductPicture,
     capture: Option<(PathBuf, Instant)>,
+    library: Vec<crate::profiles::Profile>,
+    profile_id: Option<String>,
+    profile_name: String,
+    profile_program: String,
+    profile_file: String,
+    profile_review: Option<(String, Vec<String>)>,
+    diagnostics: String,
+    daemon_error: Option<String>,
+    monitor: Option<crate::diagnostics::InputMonitor>,
+    file_picker: Option<Child>,
+    profile_revision: Option<SystemTime>,
 }
 
 enum ProductPicture {
@@ -57,10 +70,12 @@ enum Pending {
     Switch(Device),
     Reload,
     Close,
+    Profile(crate::profiles::Profile),
+    DeleteProfile(crate::profiles::Profile),
 }
 
 impl App {
-    pub fn new(context: &egui::Context, capture: Option<PathBuf>) -> Self {
+    pub fn new(context: &egui::Context, capture: Option<PathBuf>, page: Page) -> Self {
         theme(context);
         let repaint = context.clone();
         let worker = Worker::start(move || repaint.request_repaint());
@@ -72,7 +87,7 @@ impl App {
             snapshot: None,
             draft: vec![],
             status: Status::default(),
-            page: Page::Sensor,
+            page,
             message: "Suche nach OpenRazer-Geräten …".into(),
             problem: false,
             busy: false,
@@ -87,6 +102,17 @@ impl App {
             photo_url: None,
             picture: ProductPicture::Missing,
             capture: capture.map(|path| (path, Instant::now() + Duration::from_millis(1400))),
+            library: Vec::new(),
+            profile_id: None,
+            profile_name: String::new(),
+            profile_program: String::new(),
+            profile_file: String::new(),
+            profile_review: None,
+            diagnostics: String::new(),
+            daemon_error: None,
+            monitor: None,
+            file_picker: None,
+            profile_revision: None,
         }
     }
 
@@ -103,6 +129,8 @@ impl App {
 
     fn load(&mut self, device: Device) {
         self.busy = true;
+        self.monitor = None;
+        self.diagnostics.clear();
         self.preview_sent = None;
         self.preview_deadline = None;
         self.notify("Geräteeinstellungen werden gelesen …", false);
@@ -119,11 +147,17 @@ impl App {
             .iter()
             .map(|field| field.value.clone())
             .collect();
+        self.profile_review = None;
         if !same {
             self.status = Status::default();
         }
         self.set_photo(snapshot.product_image.clone());
+        self.diagnostics.clear();
+        self.profile_revision = crate::profiles::revision(&snapshot.device);
         self.snapshot = Some(snapshot);
+        if self.page == Page::Profiles {
+            self.reload_profiles();
+        }
         if !self.has_page(self.page) {
             self.page = Page::ALL
                 .into_iter()
@@ -180,11 +214,16 @@ impl App {
                     }
                     match result {
                         Ok((devices, selected, status)) => {
+                            if self.devices != devices || self.daemon_error.is_some() {
+                                self.diagnostics.clear();
+                            }
+                            self.daemon_error = None;
                             self.devices = devices;
                             self.status = status;
                             let current = self.snapshot.as_ref().map(|view| &view.device);
                             if self.devices.is_empty() {
                                 self.snapshot = None;
+                                self.monitor = None;
                                 self.set_photo(None);
                                 self.draft.clear();
                                 self.notify("Warte auf eine Maus oder einen Empfänger.", false);
@@ -194,12 +233,23 @@ impl App {
                                     .cloned()
                                     .unwrap_or_else(|| self.devices[0].clone());
                                 self.load(target);
+                            } else if let Some(current) = current
+                                && self.changes().is_empty()
+                                && self.profile_revision != crate::profiles::revision(current)
+                            {
+                                self.load(current.clone());
                             }
                         }
                         Err(error) => {
+                            let message = format!("{error:#}");
+                            if self.daemon_error.as_ref() != Some(&message) {
+                                self.diagnostics.clear();
+                            }
                             self.devices.clear();
+                            self.monitor = None;
+                            self.daemon_error = Some(message.clone());
                             self.status = Status::default();
-                            self.notify(format!("{error:#}"), true);
+                            self.notify(message, true);
                         }
                     }
                 }
@@ -219,6 +269,34 @@ impl App {
                         Ok(snapshot) => {
                             self.accept_snapshot(snapshot);
                             self.notify("Einstellungen übernommen", false);
+                        }
+                        Err(error) => self.notify(format!("{error:#}"), true),
+                    }
+                }
+                Reply::LightTest(result) => {
+                    self.busy = false;
+                    match result {
+                        Ok(snapshot) => {
+                            self.accept_snapshot(snapshot);
+                            self.notify(
+                                "LED-Test beendet · Ausgangswerte wiederhergestellt",
+                                false,
+                            );
+                        }
+                        Err(error) => self.notify(format!("{error:#}"), true),
+                    }
+                }
+                Reply::ProfileCaptured(result) => {
+                    self.busy = false;
+                    let result = result.and_then(|profile| {
+                        crate::profiles::save(&profile, false)?;
+                        Ok(profile)
+                    });
+                    match result {
+                        Ok(profile) => {
+                            self.reload_profiles();
+                            self.select_profile(&profile);
+                            self.notify(format!("{} gespeichert", profile.name), false);
                         }
                         Err(error) => self.notify(format!("{error:#}"), true),
                     }
@@ -268,6 +346,16 @@ impl App {
                 }
             }
             Pending::Close => self.close(),
+            Pending::Profile(profile) => self.preview_profile(profile),
+            Pending::DeleteProfile(profile) => match crate::profiles::remove(&profile) {
+                Ok(()) => {
+                    self.profile_id = None;
+                    self.profile_program.clear();
+                    self.reload_profiles();
+                    self.notify(format!("{} gelöscht", profile.name), false);
+                }
+                Err(error) => self.notify(format!("{error:#}"), true),
+            },
         }
     }
 
@@ -302,9 +390,12 @@ impl App {
     }
 
     fn has_page(&self, page: Page) -> bool {
-        self.snapshot
-            .as_ref()
-            .is_some_and(|snapshot| snapshot.fields.iter().any(|field| field.page == page))
+        page == Page::Diagnostics
+            || (page == Page::Profiles && self.snapshot.is_some())
+            || self
+                .snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.fields.iter().any(|field| field.page == page))
             || (page == Page::Power && self.status.battery.is_some())
     }
 
@@ -352,7 +443,7 @@ impl App {
         if let Some(target) = target {
             self.ask(Pending::Switch(target));
         }
-        if self.snapshot.is_some() {
+        {
             ui.add_space(24.0);
             ui.label(emphasis("EINSTELLUNGEN", 12.0).color(MUTED));
             ui.add_space(6.0);
@@ -363,17 +454,27 @@ impl App {
                     Page::Lights => Icon::Light,
                     Page::Power => Icon::Battery,
                     Page::Receiver => Icon::Receiver,
+                    Page::Profiles => Icon::Profiles,
+                    Page::Diagnostics => Icon::Pulse,
                 };
                 if self.has_page(page)
                     && rail_button(ui, icon, page.title(), self.page == page, 39.0).clicked()
                 {
-                    self.page = page;
+                    self.open_page(page);
                 }
             }
         }
     }
 
     fn main(&mut self, ui: &mut Ui) {
+        if self.page == Page::Diagnostics {
+            self.diagnostics_view(ui);
+            return;
+        }
+        if self.page == Page::Profiles && self.snapshot.is_some() {
+            self.profiles_view(ui);
+            return;
+        }
         if self.snapshot.is_none() {
             ui.add_space(66.0);
             ui.vertical_centered(|ui| {
@@ -584,6 +685,430 @@ impl App {
         }
     }
 
+    fn open_page(&mut self, page: Page) {
+        if self.page == page {
+            return;
+        }
+        self.page = page;
+        self.monitor = None;
+        match page {
+            Page::Profiles => self.reload_profiles(),
+            Page::Diagnostics => self.refresh_diagnostics(),
+            _ => {}
+        }
+    }
+
+    fn reload_profiles(&mut self) {
+        match crate::profiles::list() {
+            Ok(list) => {
+                if let Some(snapshot) = &self.snapshot {
+                    let model = crate::profiles::model(&snapshot.device);
+                    let mut compatible = list.iter().filter(|profile| profile.model == model);
+                    if !compatible
+                        .clone()
+                        .any(|profile| self.profile_id.as_deref() == Some(&profile.id()))
+                    {
+                        if let Some(profile) = compatible.next() {
+                            self.select_profile(profile);
+                        } else {
+                            self.profile_id = None;
+                            self.profile_program.clear();
+                        }
+                    }
+                }
+                self.library = list;
+            }
+            Err(error) => self.notify(format!("{error:#}"), true),
+        }
+    }
+
+    fn select_profile(&mut self, profile: &crate::profiles::Profile) {
+        self.profile_id = Some(profile.id());
+        self.profile_program = profile.program.clone().unwrap_or_default();
+    }
+
+    fn choose_profile_file(&mut self, save: bool) {
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let path = if self.profile_file.trim().is_empty() {
+            if save {
+                home.join("pointrill-profil.json")
+            } else {
+                home
+            }
+        } else {
+            PathBuf::from(self.profile_file.trim())
+        };
+        match Command::new("kdialog")
+            .arg(if save {
+                "--getsavefilename"
+            } else {
+                "--getopenfilename"
+            })
+            .arg(path)
+            .arg("*.json|Pointrill-Profile (*.json)")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(picker) => self.file_picker = Some(picker),
+            Err(_) => self.notify(
+                "Dateiauswahl nicht verfügbar. Gib den Pfad direkt ein.",
+                false,
+            ),
+        }
+    }
+
+    fn check_profile_file(&mut self) {
+        let completed = self
+            .file_picker
+            .as_mut()
+            .is_some_and(|picker| picker.try_wait().is_ok_and(|status| status.is_some()));
+        if completed
+            && let Some(picker) = self.file_picker.take()
+            && let Ok(output) = picker.wait_with_output()
+            && output.status.success()
+        {
+            self.profile_file = String::from_utf8_lossy(&output.stdout)
+                .trim_end_matches(['\n', '\r'])
+                .to_string();
+        }
+    }
+
+    fn preview_profile(&mut self, profile: crate::profiles::Profile) {
+        let Some(snapshot) = &self.snapshot else {
+            return;
+        };
+        match profile.plan(snapshot) {
+            Ok(plan) => {
+                let mut details: Vec<_> = plan
+                    .changes
+                    .iter()
+                    .filter_map(|(key, value)| {
+                        let field = snapshot.fields.iter().find(|field| &field.key == key)?;
+                        let name = if matches!(key, Key::Brightness(Some(_))) {
+                            format!("{} · Helligkeit", field.label)
+                        } else {
+                            field.label.into()
+                        };
+                        Some(format!(
+                            "{name} · vorher {} · danach {}",
+                            crate::profiles::display(field, &field.value),
+                            crate::profiles::display(field, value)
+                        ))
+                    })
+                    .collect();
+                if details.is_empty() {
+                    details.push("Keine Änderung an den verfügbaren Einstellungen.".into());
+                }
+                if !plan.skipped.is_empty() {
+                    details.push(format!(
+                        "Nicht verfügbar oder hier ungültig: {}",
+                        plan.skipped.join(", ")
+                    ));
+                }
+                self.preview_deadline = None;
+                if self.preview_sent.take().is_some() {
+                    let _ = self.worker.send.send(Request::Preview(None));
+                }
+                self.draft = plan.draft;
+                self.profile_review = Some((profile.name.clone(), details));
+                self.notify(format!("Vorschau · {}", profile.name), false);
+            }
+            Err(error) => self.notify(format!("{error:#}"), true),
+        }
+    }
+
+    fn profiles_view(&mut self, ui: &mut Ui) {
+        let Some(snapshot) = &self.snapshot else {
+            return;
+        };
+        let model = crate::profiles::model(&snapshot.device);
+        let device = snapshot.device.clone();
+        let profiles: Vec<_> = self
+            .library
+            .iter()
+            .filter(|p| p.model == model)
+            .cloned()
+            .collect();
+        ui.label(emphasis("Profile", 34.0));
+        ui.label(Text::new(&device.name).color(MUTED));
+        ui.add_space(13.0);
+        tile(PANEL).show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.label(emphasis("Aktuelle Einstellungen sichern", 18.0));
+            ui.horizontal_wrapped(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.profile_name)
+                        .hint_text("Profilname, z. B. Desktop")
+                        .desired_width(220.0),
+                );
+                if ui
+                    .add_enabled(
+                        !self.profile_name.trim().is_empty() && self.changes().is_empty(),
+                        egui::Button::new("Profil speichern"),
+                    )
+                    .clicked()
+                {
+                    self.busy = true;
+                    self.notify("Lese aktuelle Einstellungen …", false);
+                    let _ = self
+                        .worker
+                        .send
+                        .send(Request::CaptureProfile(self.profile_name.clone(), None));
+                }
+                if ui.button("Letzten Stand wiederherstellen").clicked() {
+                    match crate::profiles::last(&device) {
+                        Ok(backup) => self.ask(Pending::Profile(backup)),
+                        Err(error) => self.notify(error.to_string(), true),
+                    }
+                }
+            });
+        });
+        ui.add_space(9.0);
+        tile(PANEL).show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.label(emphasis("Gespeicherte Profile", 18.0));
+                if ui.small_button("Aktualisieren").clicked() {
+                    self.reload_profiles();
+                }
+            });
+            if profiles.is_empty() {
+                ui.label(Text::new("Für dieses Mausmodell sind noch keine Profile gespeichert.").color(MUTED));
+            }
+            ui.horizontal_wrapped(|ui| {
+                for profile in &profiles {
+                    let selected = self.profile_id.as_ref().is_some_and(|id| *id == profile.id());
+                    if button(ui, &profile.name, selected, (76.0, 33.0)).clicked() {
+                        self.select_profile(profile);
+                    }
+                }
+            });
+            if let Some(profile) = profiles.iter().find(|p| self.profile_id.as_ref().is_some_and(|id| *id == p.id())) {
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button("Änderungen ansehen").clicked() {
+                        self.ask(Pending::Profile(profile.clone()));
+                    }
+                    if ui.button("Profil löschen").clicked() {
+                        self.confirm = Some(Pending::DeleteProfile(profile.clone()));
+                    }
+                });
+                ui.add_space(6.0);
+                ui.label(emphasis("Spielzuordnung", 15.0));
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::TextEdit::singleline(&mut self.profile_program)
+                        .hint_text("Programmdatei, z. B. cs2").desired_width(220.0));
+                    if ui.button("Zuordnung speichern").clicked() {
+                        match profile.automatic(&profile.name, Some(&self.profile_program))
+                            .and_then(|updated| crate::profiles::save(&updated, true))
+                        {
+                            Ok(()) => {
+                                self.reload_profiles();
+                                self.notify("Spielzuordnung gespeichert", false);
+                            }
+                            Err(error) => self.notify(format!("{error:#}"), true),
+                        }
+                    }
+                });
+                ui.label(Text::new("Der KDE-Tray wechselt beim Start des Programms. Ein leeres Feld deaktiviert die Zuordnung.").color(MUTED));
+            }
+            ui.add_space(8.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut self.profile_file)
+                    .hint_text("Dateipfad zur .json-Datei").desired_width(290.0));
+                if ui.add_enabled(self.file_picker.is_none(), egui::Button::new("Datei auswählen …")).clicked() {
+                    self.choose_profile_file(false);
+                }
+                if ui.add_enabled(self.file_picker.is_none(), egui::Button::new("Exportpfad …")).clicked() {
+                    self.choose_profile_file(true);
+                }
+                if ui.add_enabled(!self.profile_file.trim().is_empty(), egui::Button::new("Importieren")).clicked() {
+                    let result = crate::profiles::import(Path::new(self.profile_file.trim()))
+                        .and_then(|mut profile| {
+                            profile.program = None;
+                            crate::profiles::save(&profile, false)?;
+                            Ok(profile)
+                        });
+                    match result {
+                        Ok(profile) => {
+                            self.reload_profiles();
+                            self.select_profile(&profile);
+                            self.notify(format!("{} importiert", profile.name), false);
+                        }
+                        Err(error) => self.notify(format!("{error:#}"), true),
+                    }
+                }
+                if let Some(profile) = profiles.iter().find(|p| self.profile_id.as_ref().is_some_and(|id| *id == p.id()))
+                    && ui.add_enabled(!self.profile_file.trim().is_empty(), egui::Button::new("Exportieren")).clicked()
+                {
+                    match crate::profiles::export(profile, Path::new(self.profile_file.trim())) {
+                        Ok(()) => self.notify("Profil exportiert", false),
+                        Err(error) => self.notify(format!("{error:#}"), true),
+                    }
+                }
+            });
+        });
+        if let Some((name, rows)) = &self.profile_review {
+            ui.add_space(10.0);
+            tile(PANEL).show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
+                ui.label(emphasis(format!("Vorschau · {name}"), 18.0).color(GREEN));
+                for row in rows {
+                    ui.label(row);
+                }
+            });
+        }
+    }
+
+    fn refresh_diagnostics(&mut self) {
+        self.diagnostics = crate::diagnostics::report(
+            &self.devices,
+            self.snapshot.as_ref(),
+            self.daemon_error.as_deref(),
+        );
+    }
+
+    fn diagnostics_view(&mut self, ui: &mut Ui) {
+        ui.label(emphasis("Gerätetest", 34.0));
+        ui.add_space(8.0);
+        if self.diagnostics.is_empty() {
+            self.refresh_diagnostics();
+        }
+        tile(PANEL).show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.horizontal_wrapped(|ui| {
+                ui.label(emphasis("Geräte und Zugriff", 18.0));
+                if ui.button("Neu prüfen").clicked() {
+                    self.refresh_diagnostics();
+                }
+                if ui.button("Diagnose kopieren").clicked() {
+                    ui.ctx().copy_text(self.diagnostics.clone());
+                    self.notify("Diagnose kopiert", false);
+                }
+            });
+            ui.label(Text::new(&self.diagnostics).monospace().size(13.0));
+        });
+        let Some(snapshot) = &self.snapshot else {
+            return;
+        };
+        let device = snapshot.device.clone();
+        let zones: Vec<_> = snapshot
+            .fields
+            .iter()
+            .filter_map(|field| match (&field.key, &field.control) {
+                (Key::Light(zone), Control::Effects(effects))
+                    if effects.contains(&Effect::Static)
+                        && field.validates(&field.value).is_ok()
+                        && snapshot
+                            .fields
+                            .iter()
+                            .any(|candidate| candidate.key == Key::Brightness(Some(*zone))) =>
+                {
+                    Some(*zone)
+                }
+                _ => None,
+            })
+            .collect();
+        ui.add_space(12.0);
+        tile(PANEL).show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.label(emphasis("Tasten und Scrollrad", 18.0));
+            if let Some((x, y)) = self.status.dpi {
+                let dpi = if x == y || y == 0 {
+                    format!("{x} DPI")
+                } else {
+                    format!("{x} × {y} DPI")
+                };
+                ui.label(
+                    self.status
+                        .dpi_stage
+                        .map_or(dpi.clone(), |stage| format!("DPI-Stufe {stage} · {dpi}")),
+                );
+            }
+            if self.monitor.is_none() && ui.button("Eingabetest starten").clicked() {
+                self.monitor = Some(crate::diagnostics::InputMonitor::start(&device));
+            }
+            if self.monitor.is_some() && ui.button("Eingabetest beenden").clicked() {
+                self.monitor = None;
+            }
+            if let Some(monitor) = &mut self.monitor {
+                ui.label(Text::new(&monitor.message).color(MUTED));
+                if monitor.fallback {
+                    let (area, response) = ui.allocate_exact_size(
+                        vec2(ui.available_width(), 62.0),
+                        egui::Sense::click(),
+                    );
+                    ui.painter().rect_filled(area, 6, FIELD);
+                    ui.painter().text(
+                        area.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "Hier klicken und scrollen",
+                        FontId::proportional(15.0),
+                        TEXT,
+                    );
+                    ui.input(|input| {
+                        for event in &input.events {
+                            match event {
+                                egui::Event::PointerButton {
+                                    pos,
+                                    button,
+                                    pressed: true,
+                                    ..
+                                } if area.contains(*pos) => {
+                                    let label = match button {
+                                        egui::PointerButton::Primary => "Linke Maustaste",
+                                        egui::PointerButton::Secondary => "Rechte Maustaste",
+                                        egui::PointerButton::Middle => "Mittlere Maustaste",
+                                        egui::PointerButton::Extra1 => "Seitentaste 1",
+                                        egui::PointerButton::Extra2 => "Seitentaste 2",
+                                    };
+                                    monitor.record(label.into());
+                                }
+                                egui::Event::MouseWheel { delta, .. }
+                                    if response.hovered() && *delta != Vec2::ZERO =>
+                                {
+                                    let horizontal = delta.x.abs() > delta.y.abs();
+                                    monitor.record(crate::diagnostics::scroll_event(
+                                        horizontal,
+                                        if horizontal {
+                                            delta.x > 0.0
+                                        } else {
+                                            delta.y > 0.0
+                                        },
+                                    ));
+                                }
+                                _ => {}
+                            }
+                        }
+                    });
+                }
+                for event in &monitor.events {
+                    ui.label(event);
+                }
+            }
+        });
+        if !zones.is_empty() {
+            ui.add_space(12.0);
+            tile(PANEL).show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
+                ui.label(emphasis("LED-Zonen prüfen", 18.0));
+                ui.label(Text::new("Die Zone leuchtet zwei Sekunden. Danach stellt Pointrill ihre Einstellung wieder her.").color(MUTED));
+                let enabled = self.changes().is_empty();
+                ui.horizontal_wrapped(|ui| {
+                    for zone in zones {
+                        if ui.add_enabled(enabled, egui::Button::new(format!("{} testen", zone.name))).clicked() {
+                            self.busy = true;
+                            self.notify(format!("Teste {} …", zone.name), false);
+                            let _ = self.worker.send.send(Request::TestLight(zone));
+                        }
+                    }
+                });
+            });
+        }
+    }
+
     fn footer(&mut self, ui: &mut Ui) {
         let dirty = !self.changes().is_empty();
         ui.horizontal(|ui| {
@@ -659,6 +1184,11 @@ impl eframe::App for App {
     fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
         self.read_replies(context);
         self.read_photos(context);
+        self.check_profile_file();
+        if let Some(monitor) = &mut self.monitor {
+            monitor.poll();
+            context.request_repaint_after(Duration::from_millis(60));
+        }
         if context.input(|input| input.viewport().close_requested()) && !self.ready_to_close {
             context.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             if !self.busy && self.confirm.is_none() && !self.closing {
@@ -712,18 +1242,39 @@ impl eframe::App for App {
                         .show(ui, |ui| self.main(ui));
                 });
         });
-        if self.confirm.is_some() {
-            egui::Window::new("Änderungen verwerfen?")
+        if let Some(pending) = &self.confirm {
+            let (title, detail, remove) = match pending {
+                Pending::DeleteProfile(profile) => (
+                    "Profil löschen?",
+                    format!("„{}“ aus der Sammlung entfernen?", profile.name),
+                    true,
+                ),
+                _ => (
+                    "Änderungen verwerfen?",
+                    "Deine Entwürfe wurden noch nicht übernommen.".into(),
+                    false,
+                ),
+            };
+            egui::Window::new(title)
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
                 .show(ui.ctx(), |ui| {
-                    ui.label("Deine Entwürfe wurden noch nicht übernommen.");
+                    ui.label(detail);
                     ui.horizontal(|ui| {
-                        if ui.button("Weiter bearbeiten").clicked() {
+                        if ui
+                            .button(if remove {
+                                "Abbrechen"
+                            } else {
+                                "Weiter bearbeiten"
+                            })
+                            .clicked()
+                        {
                             self.confirm = None;
                         }
-                        if ui.button("Verwerfen").clicked()
+                        if ui
+                            .button(if remove { "Löschen" } else { "Verwerfen" })
+                            .clicked()
                             && let Some(pending) = self.confirm.take()
                         {
                             self.execute(pending);
@@ -1130,6 +1681,7 @@ enum Icon {
     Light,
     Mouse,
     Pulse,
+    Profiles,
     Receiver,
     Sensor,
 }
@@ -1180,6 +1732,11 @@ impl Icon {
                     .collect(),
                     line,
                 );
+            }
+            Self::Profiles => {
+                box_outline(0.0, 0.0, 16.0, 16.0, 2);
+                segment(-4.0, -3.0, 4.0, -3.0);
+                segment(-4.0, 2.0, 4.0, 2.0);
             }
             Self::Receiver => {
                 box_outline(0.0, 3.0, 11.0, 9.0, 2);

@@ -1,4 +1,5 @@
 use anyhow::{Result, bail, ensure};
+use serde::{Deserialize, Serialize};
 
 pub type Dpi = (u16, u16);
 pub const CYCLES: [(i32, &str); 4] = [
@@ -54,6 +55,7 @@ pub struct Status {
     pub battery: Option<u8>,
     pub charging: bool,
     pub dpi: Option<Dpi>,
+    pub dpi_stage: Option<u8>,
     pub polling: Option<i32>,
 }
 
@@ -64,15 +66,19 @@ pub enum Page {
     Lights,
     Power,
     Receiver,
+    Profiles,
+    Diagnostics,
 }
 
 impl Page {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 7] = [
         Self::Sensor,
         Self::Wheel,
         Self::Lights,
         Self::Power,
         Self::Receiver,
+        Self::Profiles,
+        Self::Diagnostics,
     ];
 
     pub fn title(self) -> &'static str {
@@ -82,6 +88,8 @@ impl Page {
             Self::Lights => "Beleuchtung",
             Self::Power => "Akku",
             Self::Receiver => "Dongle",
+            Self::Profiles => "Profile",
+            Self::Diagnostics => "Gerätetest",
         }
     }
 }
@@ -169,7 +177,8 @@ impl Key {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Effect {
     Off,
     Static,
@@ -259,7 +268,8 @@ impl Effect {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Value {
     Bool(bool),
     Number(i32),
