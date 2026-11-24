@@ -1,3 +1,4 @@
+mod appearance;
 mod polling_view;
 
 use std::path::{Path, PathBuf};
@@ -16,16 +17,7 @@ use crate::model::{
 };
 use crate::worker::{Reply, Request, Worker};
 
-const BASE: Color = Color::from_rgb(11, 14, 12);
-const RAIL: Color = Color::from_rgb(16, 20, 17);
-const PANEL: Color = Color::from_rgb(22, 27, 23);
-const FIELD: Color = Color::from_rgb(30, 37, 32);
-const LINE: Color = Color::from_rgb(51, 64, 55);
-const TEXT: Color = Color::from_rgb(244, 247, 244);
-const MUTED: Color = Color::from_rgb(169, 180, 173);
-const GREEN: Color = Color::from_rgb(122, 241, 43);
-const ACTIVE_BG: Color = Color::from_rgb(30, 54, 20);
-const WARN: Color = Color::from_rgb(255, 164, 151);
+use self::appearance::{Appearance, Palette, colors};
 
 pub struct App {
     worker: Worker,
@@ -75,7 +67,8 @@ impl App {
         page: Page,
         activation: Option<Receiver<Option<Page>>>,
     ) -> Self {
-        theme(context);
+        install_fonts(context);
+        Appearance::load().apply(context);
         let repaint = context.clone();
         let worker = Worker::start(move || repaint.request_repaint());
         Self {
@@ -353,7 +346,7 @@ impl App {
     }
 
     fn has_page(&self, page: Page) -> bool {
-        page == Page::Diagnostics
+        matches!(page, Page::Diagnostics | Page::System)
             || (page == Page::Profiles && self.snapshot.is_some())
             || self
                 .snapshot
@@ -365,16 +358,16 @@ impl App {
     fn header(ui: &mut Ui) {
         ui.horizontal(|ui| {
             let (mark, _) = ui.allocate_exact_size(vec2(36.0, 34.0), egui::Sense::hover());
-            logo(ui.painter(), mark);
+            logo(ui.painter(), mark, colors(ui).accent);
             ui.label(emphasis("POINTRILL", 25.0));
         });
     }
 
     fn sidebar(&mut self, ui: &mut Ui) {
-        ui.label(emphasis("GERÄTE", 12.0).color(MUTED));
+        ui.label(emphasis("GERÄTE", 12.0).color(colors(ui).muted));
         ui.add_space(6.0);
         if self.devices.is_empty() {
-            ui.label(Text::new("Gerät verbinden").color(MUTED));
+            ui.label(Text::new("Gerät verbinden").color(colors(ui).muted));
         }
         let mut target = None;
         for device in &self.devices {
@@ -393,7 +386,7 @@ impl App {
         }
         {
             ui.add_space(24.0);
-            ui.label(emphasis("EINSTELLUNGEN", 12.0).color(MUTED));
+            ui.label(emphasis("EINSTELLUNGEN", 12.0).color(colors(ui).muted));
             ui.add_space(6.0);
             for page in Page::ALL {
                 let icon = match page {
@@ -404,6 +397,7 @@ impl App {
                     Page::Receiver => Icon::Receiver,
                     Page::Profiles => Icon::Profiles,
                     Page::Diagnostics => Icon::Pulse,
+                    Page::System => Icon::System,
                 };
                 if self.has_page(page)
                     && rail_button(ui, icon, page.title(), self.page == page, 39.0).clicked()
@@ -415,6 +409,10 @@ impl App {
     }
 
     fn main(&mut self, ui: &mut Ui) {
+        if self.page == Page::System {
+            self.system_view(ui);
+            return;
+        }
         if let Some(snapshot) = &self.snapshot {
             self.device_overview(ui, &snapshot.device);
             ui.add_space(if compact_height(ui) { 8.0 } else { 15.0 });
@@ -424,7 +422,7 @@ impl App {
                 ui.label(emphasis("Maus verbinden", 32.0));
                 ui.label(
                     Text::new("Unterstützte Mäuse und Empfänger erscheinen automatisch.")
-                        .color(MUTED),
+                        .color(colors(ui).muted),
                 );
             });
             return;
@@ -437,10 +435,78 @@ impl App {
         }
     }
 
+    fn system_view(&mut self, ui: &mut Ui) {
+        ui.set_max_width(686.0);
+        ui.label(emphasis("System", 28.0));
+        ui.add_space(10.0);
+        let current = appearance::current(ui.ctx());
+        let mut selected = current;
+        tile(ui, colors(ui).panel).show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.columns(2, |columns| {
+                let [controls, preview] = columns else {
+                    return;
+                };
+                controls.label(emphasis("Thema", 18.0));
+                controls.add_space(3.0);
+                egui::ComboBox::from_id_salt("appearance")
+                    .width(190.0)
+                    .height(270.0)
+                    .selected_text(selected.label())
+                    .show_ui(controls, |ui| {
+                        for theme in Appearance::ALL {
+                            ui.selectable_value(&mut selected, theme, theme.label());
+                        }
+                    });
+                preview.label(Text::new("Vorschau").color(colors(preview).muted));
+                selected.preview(preview);
+            });
+        });
+        if selected != current {
+            match selected.save() {
+                Ok(()) => selected.apply(ui.ctx()),
+                Err(error) => self.notify(
+                    format!("Thema konnte nicht gespeichert werden: {error:#}"),
+                    true,
+                ),
+            }
+        }
+        ui.add_space(8.0);
+        tile(ui, colors(ui).panel).show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(emphasis("Autostart", 18.0));
+                    ui.label(
+                        Text::new("Pointrill-Tray bei der Anmeldung starten")
+                            .color(colors(ui).muted),
+                    );
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    match crate::tray::autostart_enabled() {
+                        Ok(enabled) => {
+                            if autostart_switch(ui, enabled).clicked() {
+                                match crate::tray::change_autostart(!enabled) {
+                                    Ok(()) => ui.ctx().request_repaint(),
+                                    Err(error) => {
+                                        self.notify(format!("Autostart: {error:#}"), true)
+                                    }
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            ui.label(Text::new(format!("{error:#}")).color(colors(ui).warning));
+                        }
+                    }
+                });
+            });
+        });
+    }
+
     fn device_overview(&self, ui: &mut Ui, device: &Device) {
         let compact = compact_height(ui);
         let background = ui.painter().add(egui::Shape::Noop);
-        let overview = tile(Color::TRANSPARENT)
+        let overview = tile(ui, Color::TRANSPARENT)
             .inner_margin(egui::Margin::symmetric(
                 if compact { 15 } else { 21 },
                 if compact { 10 } else { 17 },
@@ -465,12 +531,12 @@ impl App {
                     ui.label(
                         Text::new(format!("{:04X}:{:04X}", device.vid, device.pid))
                             .monospace()
-                            .color(MUTED)
+                            .color(colors(ui).muted)
                             .size(12.0),
                     );
                 });
             });
-        paint_device_banner(ui.painter(), background, overview.response.rect);
+        paint_device_banner(ui.painter(), background, overview.response.rect, colors(ui));
 
         let mut metrics = Vec::with_capacity(3);
         if let Some(battery) = self.status.battery {
@@ -548,10 +614,12 @@ impl App {
             .collect();
         let mut card = |ui: &mut Ui, (index, (field, edit)): (usize, (&Field, &mut Value))| {
             ui.push_id(index, |ui| {
-                tile(PANEL).inner_margin(padding).show(ui, |ui| {
-                    ui.set_min_width(ui.available_width());
-                    touched |= editor(ui, field, edit);
-                });
+                tile(ui, colors(ui).panel)
+                    .inner_margin(padding)
+                    .show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+                        touched |= editor(ui, field, edit);
+                    });
             });
             ui.add_space(4.0);
         };
@@ -585,21 +653,21 @@ impl App {
             }
         }
         if self.page == Page::Wheel && !free_spin {
-            ui.label(Text::new("Smart Reel und Scrollbeschleunigung sind bei Kombinationen mit Freilauf verfügbar.").color(MUTED));
+            ui.label(Text::new("Smart Reel und Scrollbeschleunigung sind bei Kombinationen mit Freilauf verfügbar.").color(colors(ui).muted));
         }
         if self.page == Page::Power
             && let Some(battery) = self.status.battery
         {
             ui.add(
                 egui::ProgressBar::new(f32::from(battery) / 100.0)
-                    .fill(GREEN)
+                    .fill(colors(ui).accent)
                     .text(format!("{battery} %")),
             );
         }
         if self.page == Page::Sensor && snapshot.volatile_dpi {
             ui.label(
                 Text::new("DPI-Vorschau aktiv · Speichern über Übernehmen")
-                    .color(MUTED)
+                    .color(colors(ui).muted)
                     .size(11.0),
             );
         }
@@ -764,7 +832,7 @@ impl App {
             .collect();
         ui.label(emphasis("Profile", 34.0));
         ui.add_space(13.0);
-        tile(PANEL).show(ui, |ui| {
+        tile(ui, colors(ui).panel).show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             ui.label(emphasis("Aktuelle Einstellungen sichern", 18.0));
             ui.horizontal_wrapped(|ui| {
@@ -796,7 +864,7 @@ impl App {
             });
         });
         ui.add_space(9.0);
-        tile(PANEL).show(ui, |ui| {
+        tile(ui, colors(ui).panel).show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.label(emphasis("Gespeicherte Profile", 18.0));
@@ -805,7 +873,7 @@ impl App {
                 }
             });
             if profiles.is_empty() {
-                ui.label(Text::new("Für dieses Mausmodell sind noch keine Profile gespeichert.").color(MUTED));
+                ui.label(Text::new("Für dieses Mausmodell sind noch keine Profile gespeichert.").color(colors(ui).muted));
             }
             ui.horizontal_wrapped(|ui| {
                 for profile in &profiles {
@@ -841,7 +909,7 @@ impl App {
                         }
                     }
                 });
-                ui.label(Text::new("Der KDE-Tray wechselt beim Start des Programms. Ein leeres Feld deaktiviert die Zuordnung.").color(MUTED));
+                ui.label(Text::new("Der KDE-Tray wechselt beim Start des Programms. Ein leeres Feld deaktiviert die Zuordnung.").color(colors(ui).muted));
             }
             ui.add_space(8.0);
             ui.horizontal_wrapped(|ui| {
@@ -881,9 +949,9 @@ impl App {
         });
         if let Some((name, rows)) = &self.profile_review {
             ui.add_space(10.0);
-            tile(PANEL).show(ui, |ui| {
+            tile(ui, colors(ui).panel).show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
-                ui.label(emphasis(format!("Vorschau · {name}"), 18.0).color(GREEN));
+                ui.label(emphasis(format!("Vorschau · {name}"), 18.0).color(colors(ui).accent));
                 for row in rows {
                     ui.label(row);
                 }
@@ -910,7 +978,7 @@ impl App {
         if self.diagnostics.is_empty() {
             self.refresh_diagnostics();
         }
-        tile(PANEL).show(ui, |ui| {
+        tile(ui, colors(ui).panel).show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             ui.horizontal_wrapped(|ui| {
                 ui.label(emphasis("Geräte und Zugriff", 18.0));
@@ -946,7 +1014,7 @@ impl App {
             })
             .collect();
         ui.add_space(12.0);
-        tile(PANEL).show(ui, |ui| {
+        tile(ui, colors(ui).panel).show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             ui.label(emphasis("Tasten und Scrollrad", 18.0));
             if let Some((x, y)) = self.status.dpi {
@@ -968,19 +1036,19 @@ impl App {
                 self.monitor = None;
             }
             if let Some(monitor) = &mut self.monitor {
-                ui.label(Text::new(&monitor.message).color(MUTED));
+                ui.label(Text::new(&monitor.message).color(colors(ui).muted));
                 if monitor.fallback {
                     let (area, response) = ui.allocate_exact_size(
                         vec2(ui.available_width(), 62.0),
                         egui::Sense::click(),
                     );
-                    ui.painter().rect_filled(area, 6, FIELD);
+                    ui.painter().rect_filled(area, 6, colors(ui).field);
                     ui.painter().text(
                         area.center(),
                         egui::Align2::CENTER_CENTER,
                         "Hier klicken und scrollen",
                         FontId::proportional(15.0),
-                        TEXT,
+                        colors(ui).text,
                     );
                     ui.input(|input| {
                         for event in &input.events {
@@ -1025,10 +1093,10 @@ impl App {
         });
         if !zones.is_empty() {
             ui.add_space(12.0);
-            tile(PANEL).show(ui, |ui| {
+            tile(ui, colors(ui).panel).show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.label(emphasis("LED-Zonen prüfen", 18.0));
-                ui.label(Text::new("Die Zone leuchtet zwei Sekunden. Danach stellt Pointrill ihre Einstellung wieder her.").color(MUTED));
+                ui.label(Text::new("Die Zone leuchtet zwei Sekunden. Danach stellt Pointrill ihre Einstellung wieder her.").color(colors(ui).muted));
                 let enabled = self.changes().is_empty();
                 ui.horizontal_wrapped(|ui| {
                     for zone in zones {
@@ -1047,11 +1115,11 @@ impl App {
         let dirty = !self.changes().is_empty();
         ui.horizontal(|ui| {
             let color = if self.problem {
-                WARN
+                colors(ui).warning
             } else if self.snapshot.is_some() {
-                GREEN
+                colors(ui).accent
             } else {
-                MUTED
+                colors(ui).muted
             };
             let (dot, _) = ui.allocate_exact_size(vec2(10.0, 10.0), egui::Sense::hover());
             ui.painter().circle_filled(dot.center(), 3.0, color);
@@ -1061,24 +1129,28 @@ impl App {
                 egui::Layout::left_to_right(egui::Align::Center),
                 |ui| {
                     ui.add(
-                        egui::Label::new(
-                            Text::new(&self.message).size(13.0).color(if self.problem {
-                                WARN
+                        egui::Label::new(Text::new(&self.message).size(13.0).color(
+                            if self.problem {
+                                colors(ui).warning
                             } else {
-                                MUTED
-                            }),
-                        )
+                                colors(ui).muted
+                            },
+                        ))
                         .truncate(),
                     );
                 },
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let apply = egui::Button::new(emphasis("Übernehmen", 15.0).color(if dirty {
-                    BASE
+                    colors(ui).accent_ink
                 } else {
-                    MUTED
+                    colors(ui).muted
                 }))
-                .fill(if dirty { GREEN } else { FIELD })
+                .fill(if dirty {
+                    colors(ui).accent
+                } else {
+                    colors(ui).field
+                })
                 .corner_radius(6)
                 .min_size(vec2(132.0, 36.0));
                 if ui
@@ -1174,18 +1246,18 @@ impl eframe::App for App {
         ui.add_enabled_ui(enabled, |ui| {
             egui::Panel::top("brand")
                 .exact_size(if compact { 58.0 } else { 68.0 })
-                .frame(panel(RAIL, if compact { 10 } else { 16 }))
+                .frame(panel(colors(ui).rail, if compact { 10 } else { 16 }))
                 .show(ui, Self::header);
             egui::Panel::bottom("actions")
                 .exact_size(if compact { 56.0 } else { 63.0 })
-                .frame(panel(RAIL, if compact { 9 } else { 12 }))
+                .frame(panel(colors(ui).rail, if compact { 9 } else { 12 }))
                 .show(ui, |ui| self.footer(ui));
             egui::Panel::left("navigation")
                 .exact_size(185.0)
-                .frame(panel(RAIL, 12))
+                .frame(panel(colors(ui).rail, 12))
                 .show(ui, |ui| self.sidebar(ui));
             egui::CentralPanel::default()
-                .frame(panel(BASE, if compact { 14 } else { 18 }))
+                .frame(panel(colors(ui).base, if compact { 14 } else { 18 }))
                 .show(ui, |ui| {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])
@@ -1353,7 +1425,7 @@ fn editor(ui: &mut Ui, field: &Field, value: &mut Value) -> bool {
                     ui.label(
                         Text::new(format!("#{:02X}{:02X}{:02X}", color[0], color[1], color[2]))
                             .monospace()
-                            .color(MUTED),
+                            .color(colors(ui).muted),
                     );
                 });
             }
@@ -1363,7 +1435,7 @@ fn editor(ui: &mut Ui, field: &Field, value: &mut Value) -> bool {
         }
         (Control::Indicators(options), Value::Indicators(values)) => {
             for (index, value) in values.iter_mut().enumerate() {
-                ui.label(Text::new(format!("LED {}", index + 1)).color(MUTED));
+                ui.label(Text::new(format!("LED {}", index + 1)).color(colors(ui).muted));
                 options_row(ui, options, value);
             }
         }
@@ -1388,7 +1460,7 @@ fn device_brightness(ui: &mut Ui, fields: &[Field], draft: &mut [Value], padding
         .iter()
         .all(|percent| **percent == first)
         .then_some(first);
-    let selected = tile(PANEL)
+    let selected = tile(ui, colors(ui).panel)
         .inner_margin(padding)
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
@@ -1419,10 +1491,10 @@ fn brightness_steps(ui: &mut Ui, current: Option<i32>) -> Option<i32> {
     ];
     match current {
         None => {
-            ui.label(Text::new("Unterschiedliche Helligkeit").color(MUTED));
+            ui.label(Text::new("Unterschiedliche Helligkeit").color(colors(ui).muted));
         }
         Some(percent) if LEVELS.iter().all(|(level, _)| *level != percent) => {
-            ui.label(Text::new(format!("Aktuell · {percent} %")).color(MUTED));
+            ui.label(Text::new(format!("Aktuell · {percent} %")).color(colors(ui).muted));
         }
         Some(_) => {}
     }
@@ -1470,7 +1542,7 @@ fn stages(ui: &mut Ui, max: u16, active: &mut u8, points: &mut Vec<Dpi>) {
                 points.pop();
                 *active = (*active).min(points.len() as u8);
             }
-            ui.label(Text::new("Anzahl").color(MUTED));
+            ui.label(Text::new("Anzahl").color(colors(ui).muted));
         });
     });
     ui.add_space(if compact { 3.0 } else { 6.0 });
@@ -1483,12 +1555,12 @@ fn stages(ui: &mut Ui, max: u16, active: &mut u8, points: &mut Vec<Dpi>) {
             ui.add_space(9.0 - ui.spacing().item_spacing.x);
             ui.add_sized(
                 [stage_width, 18.0],
-                egui::Label::new(Text::new("Stufe").size(12.0).color(MUTED)),
+                egui::Label::new(Text::new("Stufe").size(12.0).color(colors(ui).muted)),
             );
             ["DPI X", "DPI Y"].map(|title| {
                 ui.add_sized(
                     [axis_width, 18.0],
-                    egui::Label::new(Text::new(title).size(12.0).color(MUTED)),
+                    egui::Label::new(Text::new(title).size(12.0).color(colors(ui).muted)),
                 )
                 .id
             })
@@ -1499,13 +1571,17 @@ fn stages(ui: &mut Ui, max: u16, active: &mut u8, points: &mut Vec<Dpi>) {
         let stage = (index + 1) as u8;
         let selected = stage == *active;
         egui::Frame::new()
-            .fill(if selected { ACTIVE_BG } else { RAIL })
+            .fill(if selected {
+                colors(ui).selected()
+            } else {
+                colors(ui).rail
+            })
             .stroke(Stroke::new(
                 1.0,
                 if selected {
-                    Color::from_rgb(78, 127, 59)
+                    colors(ui).accent
                 } else {
-                    LINE
+                    colors(ui).border
                 },
             ))
             .corner_radius(7)
@@ -1543,7 +1619,7 @@ fn dpi_number(ui: &mut Ui, value: &mut u16, max: u16, width: f32) -> egui::Respo
 }
 
 fn axis(ui: &mut Ui, name: &str, value: &mut u16, max: u16) {
-    let label = ui.label(Text::new(name).color(MUTED));
+    let label = ui.label(Text::new(name).color(colors(ui).muted));
     dpi_number(ui, value, max, 102.0).labelled_by(label.id);
 }
 
@@ -1572,7 +1648,7 @@ fn choice_status(ui: &mut Ui, options: &[(i32, String)], number: i32) {
             } else {
                 format!("Aktuell · {number}")
             })
-            .color(MUTED),
+            .color(colors(ui).muted),
         );
     }
 }
@@ -1593,7 +1669,7 @@ fn options_row(ui: &mut Ui, options: &[(i32, String)], number: &mut i32) {
     });
 }
 
-fn theme(context: &egui::Context) {
+fn install_fonts(context: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
         "Barlow Regular".into(),
@@ -1614,43 +1690,6 @@ fn theme(context: &egui::Context) {
     bold.insert(0, "Barlow Bold".into());
     fonts.families.insert(bold_family(), bold);
     context.set_fonts(fonts);
-
-    let mut style = (*context.style_of(egui::Theme::Dark)).clone();
-    style.visuals = egui::Visuals::dark();
-    style.visuals.panel_fill = BASE;
-    style.visuals.override_text_color = Some(TEXT);
-    style.visuals.window_fill = RAIL;
-    style.visuals.window_stroke = Stroke::new(1.0, LINE);
-    style.visuals.extreme_bg_color = FIELD;
-    style.visuals.selection.bg_fill = ACTIVE_BG;
-    style.visuals.selection.stroke = Stroke::new(1.0, GREEN);
-    style.visuals.interact_cursor = Some(egui::CursorIcon::PointingHand);
-    style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, LINE);
-    for state in [
-        &mut style.visuals.widgets.inactive,
-        &mut style.visuals.widgets.hovered,
-        &mut style.visuals.widgets.active,
-    ] {
-        state.bg_fill = FIELD;
-        state.weak_bg_fill = FIELD;
-        state.bg_stroke = Stroke::new(1.0, LINE);
-        state.fg_stroke = Stroke::new(1.0, TEXT);
-        state.corner_radius = 6.into();
-    }
-    style.visuals.widgets.hovered.bg_fill = Color::from_rgb(39, 48, 39);
-    style.visuals.widgets.hovered.weak_bg_fill = style.visuals.widgets.hovered.bg_fill;
-    style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, GREEN);
-    style.visuals.widgets.active.bg_fill = ACTIVE_BG;
-    style.visuals.widgets.active.weak_bg_fill = ACTIVE_BG;
-    style.visuals.widgets.active.bg_stroke = Stroke::new(1.0, GREEN);
-    style.spacing.item_spacing = vec2(7.0, 6.0);
-    style.spacing.button_padding = vec2(9.0, 6.0);
-    style.spacing.interact_size.y = 31.0;
-    style
-        .text_styles
-        .insert(egui::TextStyle::Body, FontId::proportional(14.0));
-    context.set_theme(egui::Theme::Dark);
-    context.set_style_of(egui::Theme::Dark, style);
 }
 
 fn bold_family() -> egui::FontFamily {
@@ -1669,21 +1708,73 @@ fn panel(color: Color, margin: i8) -> egui::Frame {
     egui::Frame::new().fill(color).inner_margin(margin)
 }
 
-fn tile(color: Color) -> egui::Frame {
+fn tile(ui: &Ui, color: Color) -> egui::Frame {
     panel(color, 12)
         .corner_radius(9)
-        .stroke(Stroke::new(1.0, LINE))
+        .stroke(Stroke::new(1.0, colors(ui).border))
 }
 
 fn button(ui: &mut Ui, title: &str, selected: bool, (width, height): (f32, f32)) -> egui::Response {
-    let ink = if selected { BASE } else { TEXT };
+    let ink = if selected {
+        colors(ui).accent_ink
+    } else {
+        colors(ui).text
+    };
     let mut choice = egui::Button::new(emphasis(title, 14.0).color(ink))
         .selected(selected)
         .min_size(vec2(width, height));
     if selected {
-        choice = choice.fill(GREEN).stroke(Stroke::new(1.0, GREEN));
+        choice = choice
+            .fill(colors(ui).accent)
+            .stroke(Stroke::new(1.0, colors(ui).accent));
     }
     ui.add(choice)
+}
+
+fn autostart_switch(ui: &mut Ui, enabled: bool) -> egui::Response {
+    let colors = colors(ui);
+    let (rect, response) = ui.allocate_exact_size(vec2(78.0, 34.0), egui::Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(
+            egui::accesskit::Role::Switch,
+            ui.is_enabled(),
+            enabled,
+            "Autostart",
+        )
+    });
+    let active = enabled || response.hovered() || response.has_focus();
+    let stroke = Stroke::new(1.0, if active { colors.accent } else { colors.border });
+    let y = rect.center().y;
+    let (knob, label, label_x) = if enabled {
+        (rect.right() - 17.0, "On", rect.left() + 24.0)
+    } else {
+        (rect.left() + 17.0, "Off", rect.right() - 24.0)
+    };
+    let painter = ui.painter();
+    painter.rect(
+        rect,
+        17,
+        if enabled {
+            colors.selected()
+        } else {
+            colors.field
+        },
+        stroke,
+        egui::StrokeKind::Inside,
+    );
+    painter.circle_filled(
+        Pos2::new(knob, y),
+        10.0,
+        if enabled { colors.accent } else { colors.muted },
+    );
+    painter.text(
+        Pos2::new(label_x, y),
+        egui::Align2::CENTER_CENTER,
+        label,
+        FontId::new(14.0, bold_family()),
+        colors.text,
+    );
+    response
 }
 
 fn rail_button(
@@ -1693,7 +1784,11 @@ fn rail_button(
     selected: bool,
     height: f32,
 ) -> egui::Response {
-    let color = if selected { GREEN } else { MUTED };
+    let color = if selected {
+        colors(ui).accent
+    } else {
+        colors(ui).muted
+    };
     let icon = egui::Atom::paint(vec2(22.0, 20.0), move |ui, args| {
         glyph.paint(ui.painter(), args.rect.center(), color);
     });
@@ -1706,21 +1801,23 @@ fn rail_button(
         .min_size(vec2(ui.available_width(), height))
         .frame_when_inactive(false);
     if selected {
-        button = button.fill(ACTIVE_BG).stroke(Stroke::new(1.0, GREEN));
+        button = button
+            .fill(colors(ui).selected())
+            .stroke(Stroke::new(1.0, colors(ui).accent));
     }
     ui.add(button)
 }
 
 fn connection_tag(ui: &mut Ui, label: &str) {
     egui::Frame::new()
-        .fill(PANEL)
-        .stroke(Stroke::new(1.0, LINE))
+        .fill(colors(ui).panel)
+        .stroke(Stroke::new(1.0, colors(ui).border))
         .corner_radius(6)
         .inner_margin(egui::Margin::symmetric(8, 4))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 let (rect, _) = ui.allocate_exact_size(vec2(19.0, 20.0), egui::Sense::hover());
-                Icon::Receiver.paint(ui.painter(), rect.center(), MUTED);
+                Icon::Receiver.paint(ui.painter(), rect.center(), colors(ui).muted);
                 ui.label(Text::new(label).size(13.0));
             });
         });
@@ -1736,33 +1833,34 @@ struct Metric {
 
 impl Metric {
     fn show(&self, ui: &mut Ui, compact: bool) {
-        tile(PANEL)
+        tile(ui, colors(ui).panel)
             .inner_margin(egui::Margin::symmetric(11, if compact { 6 } else { 9 }))
             .show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.set_min_height(if compact { 61.0 } else { 73.0 });
                 ui.horizontal(|ui| {
                     let (icon, _) = ui.allocate_exact_size(vec2(19.0, 18.0), egui::Sense::hover());
-                    self.icon.paint(ui.painter(), icon.center(), GREEN);
-                    ui.label(Text::new(self.label).size(13.0).color(MUTED));
+                    self.icon
+                        .paint(ui.painter(), icon.center(), colors(ui).accent);
+                    ui.label(Text::new(self.label).size(13.0).color(colors(ui).muted));
                 });
                 ui.horizontal_wrapped(|ui| {
                     ui.label(emphasis(&self.value, if compact { 21.0 } else { 26.0 }));
                     if let Some(detail) = &self.detail {
-                        ui.label(Text::new(detail).size(12.0).color(MUTED));
+                        ui.label(Text::new(detail).size(12.0).color(colors(ui).muted));
                     }
                 });
                 if let Some(level) = self.level {
                     let width = ui.available_width();
                     let (track, _) = ui.allocate_exact_size(vec2(width, 3.0), egui::Sense::hover());
-                    ui.painter().rect_filled(track, 2, FIELD);
+                    ui.painter().rect_filled(track, 2, colors(ui).field);
                     ui.painter().rect_filled(
                         Rect::from_min_size(
                             track.min,
                             vec2(width * f32::from(level.min(100)) / 100.0, 3.0),
                         ),
                         2,
-                        GREEN,
+                        colors(ui).accent,
                     );
                 }
             });
@@ -1778,6 +1876,7 @@ enum Icon {
     Profiles,
     Receiver,
     Sensor,
+    System,
 }
 
 impl Icon {
@@ -1844,17 +1943,29 @@ impl Icon {
                 }
                 painter.circle_filled(center, 1.3, color);
             }
+            Self::System => {
+                for (x, y) in [(-5.0, -3.0), (0.0, 3.0), (5.0, -1.0)] {
+                    segment(x, -8.0, x, y - 2.0);
+                    segment(x, y + 2.0, x, 8.0);
+                    segment(x - 2.0, y, x + 2.0, y);
+                }
+            }
         }
     }
 }
 
-fn paint_device_banner(painter: &egui::Painter, background: egui::layers::ShapeIdx, area: Rect) {
+fn paint_device_banner(
+    painter: &egui::Painter,
+    background: egui::layers::ShapeIdx,
+    area: Rect,
+    palette: Palette,
+) {
     let mut mesh = egui::Mesh::default();
     let inner = area.shrink(5.0);
-    mesh.colored_vertex(inner.left_top(), Color::from_rgb(23, 33, 26));
-    mesh.colored_vertex(inner.right_top(), Color::from_rgb(28, 48, 27));
-    mesh.colored_vertex(inner.right_bottom(), Color::from_rgb(15, 25, 18));
-    mesh.colored_vertex(inner.left_bottom(), Color::from_rgb(19, 26, 22));
+    mesh.colored_vertex(inner.left_top(), palette.panel);
+    mesh.colored_vertex(inner.right_top(), palette.selected());
+    mesh.colored_vertex(inner.right_bottom(), palette.rail);
+    mesh.colored_vertex(inner.left_bottom(), palette.panel);
     mesh.add_triangle(0, 1, 2);
     mesh.add_triangle(0, 2, 3);
     let stripe = Rect::from_min_max(
@@ -1864,14 +1975,14 @@ fn paint_device_banner(painter: &egui::Painter, background: egui::layers::ShapeI
     painter.set(
         background,
         egui::Shape::Vec(vec![
-            egui::Shape::rect_filled(area.shrink(1.0), 11, Color::from_rgb(19, 27, 22)),
+            egui::Shape::rect_filled(area.shrink(1.0), 11, palette.panel),
             egui::Shape::mesh(mesh),
-            egui::Shape::rect_filled(stripe, 2, GREEN),
+            egui::Shape::rect_filled(stripe, 2, palette.accent),
         ]),
     );
 }
 
-fn logo(painter: &egui::Painter, rect: Rect) {
+fn logo(painter: &egui::Painter, rect: Rect, ink: Color) {
     let center = rect.center();
     painter.line(
         vec![
@@ -1879,7 +1990,7 @@ fn logo(painter: &egui::Painter, rect: Rect) {
             center + vec2(0.0, -11.0),
             center + vec2(12.0, 10.0),
         ],
-        Stroke::new(3.5, GREEN),
+        Stroke::new(3.5, ink),
     );
-    painter.circle_filled(center + vec2(0.0, 6.0), 3.2, GREEN);
+    painter.circle_filled(center + vec2(0.0, 6.0), 3.2, ink);
 }

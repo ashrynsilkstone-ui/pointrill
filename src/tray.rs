@@ -469,7 +469,7 @@ fn autostart_path() -> Result<PathBuf> {
     Ok(config.join("autostart").join(format!("{TRAY_ID}.desktop")))
 }
 
-fn autostart_enabled() -> Result<bool> {
+pub(crate) fn autostart_enabled() -> Result<bool> {
     let desktop = env::var("XDG_CURRENT_DESKTOP").ok();
     let desktop = desktop.as_deref();
     match read_autostart(&autostart_path()?, desktop)? {

@@ -4,11 +4,9 @@ use eframe::egui::{
     self, Color32 as Color, FontId, Pos2, Rect, RichText as Text, Stroke, Ui, vec2,
 };
 
-use super::{BASE, GREEN, LINE, MUTED, PANEL, WARN, button, emphasis, tile};
+use super::{Palette, button, colors, emphasis, tile};
 use crate::model::Device;
 use crate::polling::{HISTORY, PollingTest, Sample};
-
-const CPU_COLOR: Color = Color::from_rgb(103, 203, 250);
 
 #[derive(Default)]
 pub(super) struct PollingView {
@@ -30,7 +28,7 @@ impl PollingView {
     }
 
     pub(super) fn show(&mut self, ui: &mut Ui, device: &Device, configured: Option<i32>) {
-        tile(PANEL).show(ui, |ui| {
+        tile(ui, colors(ui).panel).show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             let running = self.test.as_ref().is_some_and(PollingTest::running);
             ui.horizontal_wrapped(|ui| {
@@ -52,18 +50,18 @@ impl PollingView {
             if running {
                 ui.label(
                     Text::new("Maus kurz stillhalten, dann schnell hin und her bewegen.")
-                        .color(MUTED),
+                        .color(colors(ui).muted),
                 );
             } else if self.test.is_none() && self.error.is_none() {
                 ui.label(
                     Text::new(
                         "Miss die Bewegungsberichte der ausgewählten Maus und die CPU-Gesamtlast.",
                     )
-                    .color(MUTED),
+                    .color(colors(ui).muted),
                 );
             }
             if let Some(error) = &self.error {
-                ui.label(Text::new(error).color(WARN));
+                ui.label(Text::new(error).color(colors(ui).warning));
             }
             if let Some(test) = &self.test {
                 show_samples(ui, test, configured);
@@ -76,9 +74,9 @@ fn show_samples(ui: &mut Ui, test: &PollingTest, configured: Option<i32>) {
     let samples = &test.samples;
     let Some(latest) = samples.back() else {
         if let Some(message) = test.message {
-            ui.label(Text::new(message).color(WARN));
+            ui.label(Text::new(message).color(colors(ui).warning));
         } else {
-            ui.label(Text::new("Warte auf erste Messwerte …").color(MUTED));
+            ui.label(Text::new("Warte auf erste Messwerte …").color(colors(ui).muted));
         }
         return;
     };
@@ -116,7 +114,7 @@ fn show_samples(ui: &mut Ui, test: &PollingTest, configured: Option<i32>) {
             (None, Some(peak)) => format!("Spitze {peak:.0} Hz"),
             (None, None) => String::new(),
         },
-        color: GREEN,
+        color: colors(ui).accent,
         ceiling: hz_top,
         unit: "Hz",
         value: |sample| sample.hz,
@@ -128,7 +126,7 @@ fn show_samples(ui: &mut Ui, test: &PollingTest, configured: Option<i32>) {
             .cpu
             .map_or_else(|| "–".into(), |cpu| format!("{cpu:.1} %")),
         details: idle_cpu.map_or_else(String::new, |cpu| format!("Ohne Mausbewegung {cpu:.1} %")),
-        color: CPU_COLOR,
+        color: colors(ui).graph_secondary,
         ceiling: cpu_top,
         unit: "%",
         value: |sample| sample.cpu,
@@ -146,16 +144,18 @@ fn show_samples(ui: &mut Ui, test: &PollingTest, configured: Option<i32>) {
         cpu.show(ui, samples, test.running());
     }
     if latest.hz.is_none() {
-        ui.label(Text::new("Messlücke durch verlorene Eingabeereignisse.").color(WARN));
+        ui.label(
+            Text::new("Messlücke durch verlorene Eingabeereignisse.").color(colors(ui).warning),
+        );
     }
     if let Some(message) = test.message {
-        ui.label(Text::new(message).color(WARN));
+        ui.label(Text::new(message).color(colors(ui).warning));
     }
     ui.label(
         Text::new(
             "250-ms-Messfenster · Bewegungsberichte am Linux-Eingabegerät · CPU über alle Kerne",
         )
-        .color(MUTED)
+        .color(colors(ui).muted)
         .size(12.0),
     );
 }
@@ -173,24 +173,24 @@ struct Chart {
 
 impl Chart {
     fn show(&self, ui: &mut Ui, samples: &VecDeque<Sample>, running: bool) {
-        tile(BASE).inner_margin(9).show(ui, |ui| {
+        tile(ui, colors(ui).base).inner_margin(9).show(ui, |ui| {
             ui.set_min_width(ui.available_width());
-            ui.label(Text::new(self.title).color(MUTED).size(13.0));
+            ui.label(Text::new(self.title).color(colors(ui).muted).size(13.0));
             ui.horizontal_wrapped(|ui| {
                 ui.label(emphasis(&self.current, 25.0).color(self.color));
                 if !self.details.is_empty() {
-                    ui.label(Text::new(&self.details).color(MUTED).size(12.0));
+                    ui.label(Text::new(&self.details).color(colors(ui).muted).size(12.0));
                 }
             });
             let (rect, _) =
                 ui.allocate_exact_size(vec2(ui.available_width(), 115.0), egui::Sense::hover());
-            self.paint(ui.painter(), rect, samples);
+            self.paint(ui.painter(), rect, samples, colors(ui));
             ui.horizontal(|ui| {
-                ui.label(Text::new("−15 s").color(MUTED).size(11.0));
+                ui.label(Text::new("−15 s").color(colors(ui).muted).size(11.0));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(
                         Text::new(if running { "Jetzt" } else { "Ende" })
-                            .color(MUTED)
+                            .color(colors(ui).muted)
                             .size(11.0),
                     );
                 });
@@ -198,7 +198,13 @@ impl Chart {
         });
     }
 
-    fn paint(&self, painter: &egui::Painter, rect: Rect, samples: &VecDeque<Sample>) {
+    fn paint(
+        &self,
+        painter: &egui::Painter,
+        rect: Rect,
+        samples: &VecDeque<Sample>,
+        colors: Palette,
+    ) {
         let plot = Rect::from_min_max(
             rect.left_top() + vec2(56.0, 8.0),
             rect.right_bottom() - vec2(6.0, 7.0),
@@ -208,13 +214,13 @@ impl Chart {
         };
         for value in [self.ceiling, self.ceiling / 2.0, 0.0] {
             let y = y(value);
-            painter.hline(plot.x_range(), y, Stroke::new(1.0, LINE));
+            painter.hline(plot.x_range(), y, Stroke::new(1.0, colors.border));
             painter.text(
                 Pos2::new(plot.left() - 6.0, y),
                 egui::Align2::RIGHT_CENTER,
                 format!("{value:.0} {}", self.unit),
                 FontId::proportional(10.0),
-                MUTED,
+                colors.muted,
             );
         }
         if let Some(reference) = self.reference {
@@ -226,7 +232,7 @@ impl Chart {
                     .map(|x| {
                         egui::Shape::line_segment(
                             [Pos2::new(x, y), Pos2::new((x + 4.0).min(plot.right()), y)],
-                            Stroke::new(1.0, MUTED),
+                            Stroke::new(1.0, colors.muted),
                         )
                     }),
             );

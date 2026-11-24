@@ -68,10 +68,11 @@ pub enum Page {
     Receiver,
     Profiles,
     Diagnostics,
+    System,
 }
 
 impl Page {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Sensor,
         Self::Wheel,
         Self::Lights,
@@ -79,6 +80,7 @@ impl Page {
         Self::Receiver,
         Self::Profiles,
         Self::Diagnostics,
+        Self::System,
     ];
 
     pub fn title(self) -> &'static str {
@@ -90,6 +92,7 @@ impl Page {
             Self::Receiver => "Dongle",
             Self::Profiles => "Profile",
             Self::Diagnostics => "Gerätetest",
+            Self::System => "System",
         }
     }
 }

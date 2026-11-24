@@ -200,7 +200,7 @@ fn digest(value: &str) -> String {
         .collect()
 }
 
-fn config() -> Result<PathBuf> {
+pub(crate) fn config() -> Result<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
         .filter(|dir| !dir.is_empty())
         .map(PathBuf::from)
@@ -217,7 +217,7 @@ fn device_file(device: &Device, directory: &str) -> Result<PathBuf> {
     Ok(config()?.join(directory).join(format!("{name}.json")))
 }
 
-fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
+pub(crate) fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
     let file = File::open(path).with_context(|| format!("Kann {} nicht öffnen", path.display()))?;
     let mut bytes = Vec::new();
     file.take(MAX_JSON + 1).read_to_end(&mut bytes)?;
@@ -228,7 +228,7 @@ fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
     serde_json::from_slice(&bytes).context("Ungültige Profildatei")
 }
 
-fn write_json<T: Serialize>(path: &Path, data: &T, replace: bool) -> Result<()> {
+pub(crate) fn write_json<T: Serialize>(path: &Path, data: &T, replace: bool) -> Result<()> {
     let parent = path
         .parent()
         .filter(|dir| !dir.as_os_str().is_empty())

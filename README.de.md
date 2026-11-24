@@ -12,6 +12,7 @@ Pointrill ist eine Linux-Anwendung für Mäuse und Empfänger, die OpenRazer unt
 - Änderungen als Vorschau prüfen und übernehmen, Profile speichern, frühere Einstellungen wiederherstellen und beim Spielstart automatisch das Profil wechseln.
 - Mauseingaben testen und die empfangene Pollingrate sowie die CPU-Last live sehen.
 - Das Tray zeigt DPI-Stufe und Akkubalken, wechselt Profile und bietet einen Schalter für den Autostart.
+- Unter **System** stehen sechs Themes mit Vorschau und ein Schalter für den Tray-Autostart zur Auswahl.
 
 ### Tray-Screenshots
 
@@ -23,13 +24,13 @@ Pointrill ist eine Linux-Anwendung für Mäuse und Empfänger, die OpenRazer unt
 
 ## Installation
 
-Installiere und starte den OpenRazer-Treiber samt Daemon für dein Gerät. Lade das passende 64-Bit-Paket herunter. [Pointrill 0.4.6 herunterladen](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.6)
+Installiere und starte den OpenRazer-Treiber samt Daemon für dein Gerät. Lade das passende 64-Bit-Paket herunter. [Pointrill 0.4.7 herunterladen](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.7)
 
 | Distribution | Installationsbefehl |
 | --- | --- |
-| CachyOS | `sudo pacman -U ./pointrill-0.4.6-1-x86_64.pkg.tar.zst` |
-| Fedora | `sudo dnf install ./pointrill-0.4.6-1.x86_64.rpm` |
-| Debian und Ubuntu | `sudo apt install ./pointrill_0.4.6-1_amd64.deb` |
+| CachyOS | `sudo pacman -U ./pointrill-0.4.7-1-x86_64.pkg.tar.zst` |
+| Fedora | `sudo dnf install ./pointrill-0.4.7-1.x86_64.rpm` |
+| Debian und Ubuntu | `sudo apt install ./pointrill_0.4.7-1_amd64.deb` |
 
 Öffne **Pointrill** im Anwendungsmenü.
 
