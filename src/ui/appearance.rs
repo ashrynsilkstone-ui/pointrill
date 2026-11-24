@@ -100,14 +100,14 @@ impl Appearance {
     }
 
     pub fn load() -> Self {
-        crate::profiles::config()
-            .and_then(|dir| crate::profiles::read_json(&dir.join("appearance.json")))
+        crate::storage::config_dir()
+            .and_then(|dir| crate::storage::read_json(&dir.join("appearance.json")))
             .unwrap_or_default()
     }
 
     pub fn save(self) -> anyhow::Result<()> {
-        crate::profiles::write_json(
-            &crate::profiles::config()?.join("appearance.json"),
+        crate::storage::write_json(
+            &crate::storage::config_dir()?.join("appearance.json"),
             &self,
             true,
         )

@@ -1,5 +1,5 @@
 use std::env;
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
@@ -12,6 +12,8 @@ use ksni::menu::{CheckmarkItem, MenuItem, StandardItem, SubMenu};
 
 use crate::instance::APP_ID;
 use crate::model::{Device, Status};
+use crate::profiles::{self, Profile};
+use crate::storage;
 use crate::worker::{self, Session, TrayProfile};
 
 const TRAY_ID: &str = "io.github.ashrynsilkstone_ui.Pointrill.Tray";
@@ -356,15 +358,24 @@ pub fn run() -> Result<()> {
         if handle.is_closed() {
             break;
         }
-        if last_auto.is_none_or(|time: Instant| time.elapsed() >= Duration::from_secs(3)) {
-            match worker::automatic_tick() {
-                Ok(messages) if !messages.is_empty() => message = messages.last().cloned(),
-                Ok(_) => {}
-                Err(error) => eprintln!("Spielprofile: {error:#}"),
-            }
-            last_auto = Some(Instant::now());
-        }
-        let view = refresh(&mut session, preferred.as_ref(), message.clone());
+        let profiles =
+            if last_auto.is_none_or(|time: Instant| time.elapsed() >= Duration::from_secs(3)) {
+                let profiles = profiles::list();
+                match profiles
+                    .as_deref()
+                    .map_err(|error| anyhow::anyhow!("{error:#}"))
+                    .and_then(worker::automatic_tick_with_profiles)
+                {
+                    Ok(messages) if !messages.is_empty() => message = messages.last().cloned(),
+                    Ok(_) => {}
+                    Err(error) => eprintln!("Spielprofile: {error:#}"),
+                }
+                last_auto = Some(Instant::now());
+                Some(profiles.unwrap_or_default())
+            } else {
+                None
+            };
+        let view = refresh(&mut session, preferred.as_ref(), profiles, message.clone());
         if handle
             .update(|tray| {
                 if tray.view != view {
@@ -417,6 +428,7 @@ pub fn run() -> Result<()> {
 fn refresh(
     session: &mut Option<Session>,
     preferred: Option<&Device>,
+    profiles: Option<Vec<Profile>>,
     message: Option<String>,
 ) -> View {
     let mut view = View {
@@ -451,22 +463,16 @@ fn refresh(
         } else {
             Status::default()
         };
-        view.profiles = worker::device_profiles(device).unwrap_or_default();
+        let profiles = profiles.unwrap_or_else(|| profiles::list().unwrap_or_default());
+        view.profiles = worker::profiles_for_device(&profiles, device);
     }
     view
 }
 
 fn autostart_path() -> Result<PathBuf> {
-    let config = env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute())
-        .or_else(|| {
-            env::var_os("HOME")
-                .map(PathBuf::from)
-                .map(|path| path.join(".config"))
-        })
-        .context("Kein Benutzer-Konfigurationsordner gefunden")?;
-    Ok(config.join("autostart").join(format!("{TRAY_ID}.desktop")))
+    Ok(storage::config_home()?
+        .join("autostart")
+        .join(format!("{TRAY_ID}.desktop")))
 }
 
 pub(crate) fn autostart_enabled() -> Result<bool> {
@@ -494,8 +500,11 @@ fn system_autostart_enabled(desktop: Option<&str>) -> Result<bool> {
 }
 
 fn read_autostart(path: &Path, desktop: Option<&str>) -> Result<Option<bool>> {
-    match fs::read_to_string(path) {
-        Ok(contents) => Ok(Some(autostart_entry_enabled(&contents, desktop))),
+    match storage::read_file(path, 64 * 1024) {
+        Ok(contents) => Ok(Some(autostart_entry_enabled(
+            &String::from_utf8(contents)?,
+            desktop,
+        ))),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
@@ -554,22 +563,10 @@ fn write_autostart(enabled: bool, executable: &Path) -> Result<()> {
     let desktop = format!(
         "[Desktop Entry]\nType=Application\nName=Pointrill Tray\nComment=Live mouse status and profiles\nComment[de]=Live-Status und Profile der Maus\nExec=\"{arg}\" --tray\nIcon=input-mouse\nTerminal=false\nStartupNotify=false\nOnlyShowIn=KDE;GNOME;\n{hidden}"
     );
-    let directory = path.parent().context("Kein Autostart-Ordner")?;
-    fs::create_dir_all(directory)?;
-    let temporary = directory.join(format!(".{TRAY_ID}.{}.tmp", std::process::id()));
-    let result = (|| -> Result<()> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)?;
+    storage::write_file(&path, true, |file| {
         file.write_all(desktop.as_bytes())?;
-        fs::rename(&temporary, &path)?;
         Ok(())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(temporary);
-    }
-    result
+    })
 }
 
 #[cfg(test)]

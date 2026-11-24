@@ -1,8 +1,7 @@
 use std::collections::VecDeque;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{self, Read};
 use std::mem::size_of;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use crate::model::{Device, Snapshot};
@@ -180,10 +179,7 @@ impl InputNode {
     }
 
     pub(crate) fn open(&self) -> io::Result<File> {
-        OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NONBLOCK)
-            .open(&self.event)
+        crate::device_node::open(&self.event, &self.device.with_file_name("dev"), false)
     }
 }
 

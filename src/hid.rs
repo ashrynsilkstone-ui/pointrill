@@ -1,4 +1,4 @@
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::os::fd::AsRawFd;
 use std::path::Path;
 use std::thread::sleep;
@@ -36,7 +36,7 @@ impl Hid {
                 {
                     let folder = entry.path().join("hidraw");
                     for raw in fs::read_dir(folder)? {
-                        nodes.push(raw?.file_name());
+                        nodes.push(raw?.path());
                     }
                 }
             }
@@ -45,10 +45,11 @@ impl Hid {
             nodes.len() == 1,
             "USB-Steuerschnittstelle konnte nicht eindeutig zugeordnet werden"
         );
-        let fd = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(Path::new("/dev").join(&nodes[0]))
+        let sysfs = &nodes[0];
+        let name = sysfs
+            .file_name()
+            .context("Ungültige USB-Steuerschnittstelle")?;
+        let fd = crate::device_node::open(&Path::new("/dev").join(name), &sysfs.join("dev"), true)
             .context("Kein Zugriff auf die USB-Steuerschnittstelle")?;
         let mut details = [0u8; 8];
         ioctl(&fd, 0x8008_4803, &mut details)?;

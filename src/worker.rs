@@ -312,20 +312,16 @@ pub fn tray_profiles(serial: &str, pid: u16) -> Result<Vec<TrayProfile>> {
     }
     let mut backend = OpenRazer::connect()?;
     let device = tray_device(&mut backend, serial, pid)?;
-    Ok(profiles_for_device(list, &device))
+    Ok(profiles_for_device(&list, &device))
 }
 
-pub(crate) fn device_profiles(device: &Device) -> Result<Vec<TrayProfile>> {
-    Ok(profiles_for_device(profiles::list()?, device))
-}
-
-fn profiles_for_device(list: Vec<Profile>, device: &Device) -> Vec<TrayProfile> {
+pub(crate) fn profiles_for_device(list: &[Profile], device: &Device) -> Vec<TrayProfile> {
     let model = profiles::model(device);
-    list.into_iter()
+    list.iter()
         .filter(|profile| profile.model == model)
         .map(|profile| TrayProfile {
             id: profile.id(),
-            name: profile.name,
+            name: profile.name.clone(),
         })
         .collect()
 }
@@ -363,7 +359,10 @@ pub fn apply_tray_profile(serial: &str, pid: u16, profile_id: &str) -> Result<St
 }
 
 pub fn automatic_tick() -> Result<Vec<String>> {
-    let profiles = profiles::list()?;
+    automatic_tick_with_profiles(&profiles::list()?)
+}
+
+pub(crate) fn automatic_tick_with_profiles(profiles: &[Profile]) -> Result<Vec<String>> {
     if !profiles.iter().any(|profile| profile.program.is_some()) && !AutomaticRun::pending() {
         return Ok(Vec::new());
     }
@@ -373,7 +372,7 @@ pub fn automatic_tick() -> Result<Vec<String>> {
     let devices = backend.scan()?.0;
     let mut messages = Vec::new();
     for device in devices {
-        match automatic_device(&mut backend, device, &profiles, &programs) {
+        match automatic_device(&mut backend, device, profiles, &programs) {
             Ok(Some(message)) => messages.push(message),
             Ok(None) => {}
             Err(error) => messages.push(format!("Spielprofile · {error:#}")),
@@ -408,8 +407,9 @@ fn automatic_device(
         AutomaticRun::remove(&device)?;
         return Ok(None);
     }
+    let model = profiles::model(&device);
     let selected = profiles.iter().find(|p| {
-        p.model == profiles::model(&device)
+        p.model == model
             && p.program
                 .as_ref()
                 .is_some_and(|program| programs.contains(program))

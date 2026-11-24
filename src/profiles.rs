@@ -1,21 +1,20 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
 use anyhow::{Context, Result, bail, ensure};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::model::{Device, Field, Key, Snapshot, Value, draft_changes, has_free_spin};
 
+use crate::storage::{config_dir as config, read_json, write_json};
+
 const SCHEMA: u8 = 1;
-const MAX_JSON: u64 = 128 * 1024;
-static TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Profile {
@@ -200,68 +199,12 @@ fn digest(value: &str) -> String {
         .collect()
 }
 
-pub(crate) fn config() -> Result<PathBuf> {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|dir| !dir.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|dir| PathBuf::from(dir).join(".config")))
-        .map(|dir| dir.join("Pointrill"))
-        .context("Kein Benutzer-Konfigurationsordner verfügbar")
-}
-
 fn device_file(device: &Device, directory: &str) -> Result<PathBuf> {
     let name = digest(&format!(
         "{}/{:04x}/{:04x}",
         device.serial, device.vid, device.pid
     ));
     Ok(config()?.join(directory).join(format!("{name}.json")))
-}
-
-pub(crate) fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
-    let file = File::open(path).with_context(|| format!("Kann {} nicht öffnen", path.display()))?;
-    let mut bytes = Vec::new();
-    file.take(MAX_JSON + 1).read_to_end(&mut bytes)?;
-    ensure!(
-        bytes.len() as u64 <= MAX_JSON,
-        "Die Profildatei ist zu groß"
-    );
-    serde_json::from_slice(&bytes).context("Ungültige Profildatei")
-}
-
-pub(crate) fn write_json<T: Serialize>(path: &Path, data: &T, replace: bool) -> Result<()> {
-    let parent = path
-        .parent()
-        .filter(|dir| !dir.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    if replace {
-        fs::create_dir_all(parent)?;
-    }
-    let temp = parent.join(format!(
-        ".pointrill-{}-{}.tmp",
-        std::process::id(),
-        TEMP_ID.fetch_add(1, Ordering::Relaxed)
-    ));
-    let result = (|| -> Result<()> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&temp)?;
-        serde_json::to_writer_pretty(&mut file, data)?;
-        file.write_all(b"\n")?;
-        file.sync_all()?;
-        if replace {
-            fs::rename(&temp, path)?;
-        } else {
-            fs::hard_link(&temp, path)
-                .context("Exportdatei existiert bereits oder kann nicht angelegt werden")?;
-        }
-        Ok(())
-    })();
-    if result.is_err() || !replace {
-        let _ = fs::remove_file(temp);
-    }
-    result.with_context(|| format!("Kann {} nicht speichern", path.display()))
 }
 
 pub fn import(path: &Path) -> Result<Profile> {
@@ -347,8 +290,10 @@ pub fn lock(name: &str) -> Result<File> {
         .create(true)
         .truncate(false)
         .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_NOCTTY)
         .open(directory.join(format!("{name}.lock")))?;
-    // The descriptor owns the nonblocking advisory lock until it is dropped.
+    ensure!(file.metadata()?.is_file(), "Ungültige Sperrdatei");
+    // SAFETY: The open descriptor owns the advisory lock until it is dropped.
     if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
         bail!("Pointrill führt gerade eine andere Änderung aus");
     }
@@ -459,13 +404,20 @@ pub fn running_programs() -> Result<BTreeSet<String>> {
         {
             names.insert(name.to_owned());
         }
-        if let Ok(bytes) = fs::read(entry.path().join("cmdline")) {
+        let mut bytes = Vec::new();
+        if File::open(entry.path().join("cmdline"))
+            .and_then(|file| file.take(128 * 1024).read_to_end(&mut bytes))
+            .is_ok()
+        {
             for arg in bytes
-                .split(|byte| *byte == 0)
+                .split_inclusive(|byte| *byte == 0)
                 .take(6)
-                .filter_map(|arg| std::str::from_utf8(arg).ok())
+                .filter_map(|arg| std::str::from_utf8(arg.strip_suffix(&[0])?).ok())
             {
-                if arg.to_ascii_lowercase().ends_with(".exe")
+                if arg
+                    .as_bytes()
+                    .last_chunk::<4>()
+                    .is_some_and(|suffix| suffix.eq_ignore_ascii_case(b".exe"))
                     && let Some(name) = arg.rsplit(['/', '\\']).next()
                 {
                     names.insert(name.to_owned());

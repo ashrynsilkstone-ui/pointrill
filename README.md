@@ -2,7 +2,7 @@
 
 [Deutsch](README.de.md)
 
-Pointrill 0.4.7 is a Rust desktop app for mice and receivers supported by OpenRazer on Linux. It detects connected devices and shows the controls each device supports.
+Pointrill 0.4.8 is a Rust desktop app for mice and receivers supported by OpenRazer on Linux. It detects connected devices and shows the controls each device supports.
 
 ## Features
 
@@ -24,13 +24,13 @@ Pointrill 0.4.7 is a Rust desktop app for mice and receivers supported by OpenRa
 
 ## Installation
 
-Install and start the OpenRazer driver and daemon for your device. Download the matching 64-bit package. [Pointrill 0.4.7 downloads](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.7)
+Install and start the OpenRazer driver and daemon for your device. Download the matching 64-bit package. [Pointrill 0.4.8 downloads](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.8)
 
 | Distribution | Install command |
 | --- | --- |
-| CachyOS | `sudo pacman -U ./pointrill-0.4.7-1-x86_64.pkg.tar.zst` |
-| Fedora | `sudo dnf install ./pointrill-0.4.7-1.x86_64.rpm` |
-| Debian and Ubuntu | `sudo apt install ./pointrill_0.4.7-1_amd64.deb` |
+| CachyOS | `sudo pacman -U ./pointrill-0.4.8-1-x86_64.pkg.tar.zst` |
+| Fedora | `sudo dnf install ./pointrill-0.4.8-1.x86_64.rpm` |
+| Debian and Ubuntu | `sudo apt install ./pointrill_0.4.8-1_amd64.deb` |
 
 Open **Pointrill** from the application menu.
 

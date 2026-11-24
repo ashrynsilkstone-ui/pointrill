@@ -1,10 +1,12 @@
 mod bus;
+mod device_node;
 mod diagnostics;
 mod hid;
 mod instance;
 mod model;
 mod polling;
 mod profiles;
+mod storage;
 mod tray;
 mod ui;
 mod worker;

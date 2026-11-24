@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-Pointrill 0.4.7 ist eine Linux-Anwendung in Rust für Mäuse und Empfänger, die OpenRazer unterstützt. Es erkennt angeschlossene Geräte und zeigt die jeweils verfügbaren Einstellungen.
+Pointrill 0.4.8 ist eine Linux-Anwendung in Rust für Mäuse und Empfänger, die OpenRazer unterstützt. Es erkennt angeschlossene Geräte und zeigt die jeweils verfügbaren Einstellungen.
 
 ## Funktionen
 
@@ -24,13 +24,13 @@ Pointrill 0.4.7 ist eine Linux-Anwendung in Rust für Mäuse und Empfänger, die
 
 ## Installation
 
-Installiere und starte den OpenRazer-Treiber samt Daemon für dein Gerät. Lade das passende 64-Bit-Paket herunter. [Pointrill 0.4.7 herunterladen](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.7)
+Installiere und starte den OpenRazer-Treiber samt Daemon für dein Gerät. Lade das passende 64-Bit-Paket herunter. [Pointrill 0.4.8 herunterladen](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.8)
 
 | Distribution | Installationsbefehl |
 | --- | --- |
-| CachyOS | `sudo pacman -U ./pointrill-0.4.7-1-x86_64.pkg.tar.zst` |
-| Fedora | `sudo dnf install ./pointrill-0.4.7-1.x86_64.rpm` |
-| Debian und Ubuntu | `sudo apt install ./pointrill_0.4.7-1_amd64.deb` |
+| CachyOS | `sudo pacman -U ./pointrill-0.4.8-1-x86_64.pkg.tar.zst` |
+| Fedora | `sudo dnf install ./pointrill-0.4.8-1.x86_64.rpm` |
+| Debian und Ubuntu | `sudo apt install ./pointrill_0.4.8-1_amd64.deb` |
 
 Öffne **Pointrill** im Anwendungsmenü.
 

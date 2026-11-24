@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::Duration;
@@ -11,6 +10,7 @@ use zbus::zvariant::{DynamicDeserialize, DynamicType};
 
 use crate::hid::Hid;
 use crate::model::*;
+use crate::storage;
 
 const MISC: &str = "razer.device.misc";
 const SENSOR: &str = "razer.device.dpi";
@@ -44,7 +44,7 @@ impl OpenRazer {
             connection,
             owner: String::new(),
             catalog: HashMap::new(),
-            cycles: CycleCache::load(),
+            cycles: CycleCache::new(),
         })
     }
 
@@ -161,10 +161,15 @@ impl OpenRazer {
 
     fn methods(&self, device: &Device) -> Result<Methods> {
         let xml: String = self.get(device, "org.freedesktop.DBus.Introspectable", "Introspect")?;
+        ensure!(
+            xml.len() <= 256 * 1024,
+            "OpenRazer meldet eine zu große Schnittstellenbeschreibung"
+        );
         let doc = roxmltree::Document::parse_with_options(
             &xml,
             roxmltree::ParsingOptions {
                 allow_dtd: true,
+                nodes_limit: 16_384,
                 ..Default::default()
             },
         )?;
@@ -830,20 +835,13 @@ pub(crate) fn matches_read(key: &Key, actual: &Value, expected: &Value) -> bool 
 
 struct CycleCache {
     directory: Option<PathBuf>,
-    saved: BTreeMap<String, u8>,
 }
 
 impl CycleCache {
-    fn load() -> Self {
-        let directory = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")));
-        let saved = directory
-            .as_ref()
-            .and_then(|path| fs::read(path.join("Pointrill/cycles.json")).ok())
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default();
-        Self { directory, saved }
+    fn new() -> Self {
+        Self {
+            directory: storage::config_home().ok(),
+        }
     }
 
     fn key(device: &Device, profile: u8) -> String {
@@ -852,10 +850,12 @@ impl CycleCache {
 
     fn get(&self, device: &Device, profile: u8) -> Option<u8> {
         let key = Self::key(device, profile);
-        if let Some(value) = self.saved.get(&key).filter(|n| matches!(n, 3 | 5 | 6 | 7)) {
+        let config = self.directory.as_ref()?;
+        let saved: BTreeMap<String, u8> =
+            storage::read_json(&config.join("Pointrill/cycles.json")).unwrap_or_default();
+        if let Some(value) = saved.get(&key).filter(|n| matches!(n, 3 | 5 | 6 | 7)) {
             return Some(*value);
         }
-        let config = self.directory.as_ref()?;
         let legacy = key.replace('/', "\\");
         let tray = if device.pid == 0xe2 {
             format!("wired\\{}\\{profile}", device.serial)
@@ -871,19 +871,15 @@ impl CycleCache {
         })
     }
 
-    fn put(&mut self, device: &Device, profile: u8, value: u8) {
-        self.saved.insert(Self::key(device, profile), value);
-        let result = (|| {
-            if let Some(dir) = &self.directory {
-                let dir = dir.join("Pointrill");
-                fs::create_dir_all(&dir)?;
-                let tmp = dir.join(format!("cycles-{}.tmp", std::process::id()));
-                fs::write(&tmp, serde_json::to_vec(&self.saved)?)?;
-                fs::rename(tmp, dir.join("cycles.json"))?;
-            }
-            Ok::<_, anyhow::Error>(())
-        })();
-        if let Err(error) = result {
+    fn put(&self, device: &Device, profile: u8, value: u8) {
+        let Some(directory) = &self.directory else {
+            return;
+        };
+        let path = directory.join("Pointrill/cycles.json");
+        // Hardware changes are serialized with the same lock in the GUI and tray.
+        let mut saved: BTreeMap<String, u8> = storage::read_json(&path).unwrap_or_default();
+        saved.insert(Self::key(device, profile), value);
+        if let Err(error) = storage::write_json(&path, &saved, true) {
             eprintln!(
                 "Pointrill: Umschaltkombination konnte nicht zwischengespeichert werden: {error}"
             );
@@ -892,7 +888,7 @@ impl CycleCache {
 }
 
 fn read_legacy(path: &Path, section: &str, key: &str) -> Option<u8> {
-    let contents = fs::read_to_string(path).ok()?;
+    let contents = String::from_utf8(storage::read_file(path, storage::MAX_JSON).ok()?).ok()?;
     let header = format!("[{section}]");
     contents
         .lines()
