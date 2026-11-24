@@ -2,6 +2,7 @@ mod bus;
 mod diagnostics;
 mod hid;
 mod model;
+mod polling;
 mod profiles;
 mod ui;
 mod worker;

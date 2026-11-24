@@ -44,6 +44,9 @@ fn usb_devices() -> Vec<UsbDevice> {
 }
 
 fn exact_usb(device: &Device) -> Option<PathBuf> {
+    if device.serial.is_empty() {
+        return None;
+    }
     let interfaces: Vec<_> = usb_devices()
         .into_iter()
         .filter(|usb| usb.vid == device.vid && usb.pid == device.pid)
@@ -71,8 +74,17 @@ fn exact_usb(device: &Device) -> Option<PathBuf> {
                         })
                 })
     });
-    let path = exact.next()?.path.clone();
-    exact.next().is_none().then_some(path)
+    if let Some(found) = exact.next() {
+        return exact.next().is_none().then(|| found.path.clone());
+    }
+    // A receiver can report a different serial to OpenRazer than its USB or
+    // input interfaces. Fall back to the USB path only for an unambiguous match.
+    if let [usb] = interfaces.as_slice()
+        && device.connection() != "Bluetooth"
+    {
+        return Some(usb.path.clone());
+    }
+    None
 }
 
 pub fn report(
@@ -153,6 +165,73 @@ pub fn report(
     report.join("\n")
 }
 
+pub(crate) struct InputNode {
+    device: PathBuf,
+    event: PathBuf,
+}
+
+impl InputNode {
+    pub(crate) fn has_relative_motion(&self) -> bool {
+        // Linux writes capability bitmaps with the least significant word last.
+        fs::read_to_string(self.device.join("capabilities/rel"))
+            .ok()
+            .and_then(|bits| u64::from_str_radix(bits.split_whitespace().last()?, 16).ok())
+            .is_some_and(|bits| bits & 3 == 3)
+    }
+
+    pub(crate) fn open(&self) -> io::Result<File> {
+        OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&self.event)
+    }
+}
+
+pub(crate) fn device_inputs(device: &Device) -> impl Iterator<Item = InputNode> + '_ {
+    let usb = exact_usb(device);
+    fs::read_dir("/sys/class/input")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(move |entry| {
+            let id = entry.file_name();
+            let suffix = id.to_str()?.strip_prefix("event")?;
+            if suffix.is_empty() || !suffix.as_bytes().iter().all(u8::is_ascii_digit) {
+                return None;
+            }
+            let input = entry.path().join("device");
+            if read_hex(input.join("id/vendor")) != Some(device.vid)
+                || read_hex(input.join("id/product")) != Some(device.pid)
+            {
+                return None;
+            }
+            let matches = fs::read_to_string(input.join("uniq"))
+                .is_ok_and(|serial| !device.serial.is_empty() && serial.trim() == device.serial)
+                || usb.as_ref().is_some_and(|path| {
+                    input
+                        .canonicalize()
+                        .is_ok_and(|node| node.starts_with(path))
+                });
+            matches.then(|| InputNode {
+                device: input,
+                event: Path::new("/dev/input").join(id),
+            })
+        })
+}
+
+const EVENT_OFFSET: usize = size_of::<libc::timeval>();
+pub(crate) const EVENT_SIZE: usize = EVENT_OFFSET + 8;
+
+pub(crate) fn input_events(bytes: &[u8]) -> impl Iterator<Item = (u16, u16, i32)> + '_ {
+    // Reads from evdev are aligned to complete input_event records.
+    bytes.as_chunks::<EVENT_SIZE>().0.iter().map(|event| {
+        let kind = u16::from_ne_bytes([event[EVENT_OFFSET], event[EVENT_OFFSET + 1]]);
+        let code = u16::from_ne_bytes([event[EVENT_OFFSET + 2], event[EVENT_OFFSET + 3]]);
+        let value = i32::from_ne_bytes(event[EVENT_OFFSET + 4..EVENT_SIZE].try_into().unwrap());
+        (kind, code, value)
+    })
+}
+
 pub struct InputMonitor {
     files: Vec<File>,
     pub events: VecDeque<String>,
@@ -162,44 +241,10 @@ pub struct InputMonitor {
 
 impl InputMonitor {
     pub fn start(device: &Device) -> Self {
-        let usb = exact_usb(device);
         let mut files = Vec::new();
         let mut denied = false;
-        for entry in fs::read_dir("/sys/class/input")
-            .into_iter()
-            .flatten()
-            .flatten()
-        {
-            let id = entry.file_name();
-            let Some(event) = id.to_str() else {
-                continue;
-            };
-            if !event.strip_prefix("event").is_some_and(|suffix| {
-                !suffix.is_empty() && suffix.as_bytes().iter().all(u8::is_ascii_digit)
-            }) {
-                continue;
-            }
-            let input = entry.path().join("device");
-            if read_hex(input.join("id/vendor")) != Some(device.vid)
-                || read_hex(input.join("id/product")) != Some(device.pid)
-            {
-                continue;
-            }
-            let matches = fs::read_to_string(input.join("uniq"))
-                .is_ok_and(|serial| serial.trim() == device.serial)
-                || usb.as_ref().is_some_and(|path| {
-                    input
-                        .canonicalize()
-                        .is_ok_and(|node| node.starts_with(path))
-                });
-            if !matches {
-                continue;
-            }
-            match OpenOptions::new()
-                .read(true)
-                .custom_flags(libc::O_NONBLOCK)
-                .open(Path::new("/dev/input").join(event))
-            {
+        for input in device_inputs(device) {
+            match input.open() {
                 Ok(file) => files.push(file),
                 Err(error) if error.kind() == io::ErrorKind::PermissionDenied => denied = true,
                 Err(_) => {}
@@ -232,22 +277,15 @@ impl InputMonitor {
     pub fn poll(&mut self) {
         let mut events = Vec::new();
         let mut disconnected = false;
-        const OFFSET: usize = size_of::<libc::timeval>();
-        const SIZE: usize = OFFSET + 8;
-        let mut buffer = [0; SIZE * 32];
+        let mut buffer = [0; EVENT_SIZE * 32];
         self.files.retain_mut(|file| match file.read(&mut buffer) {
             Ok(0) => {
                 disconnected = true;
                 false
             }
             Ok(length) => {
-                // A read from evdev is aligned to complete input_event records.
                 let mut wheel = [None, None];
-                for event in buffer[..length].as_chunks::<SIZE>().0 {
-                    let kind = u16::from_ne_bytes([event[OFFSET], event[OFFSET + 1]]);
-                    let code = u16::from_ne_bytes([event[OFFSET + 2], event[OFFSET + 3]]);
-                    let value =
-                        i32::from_ne_bytes(event[OFFSET + 4..OFFSET + 8].try_into().unwrap());
+                for (kind, code, value) in input_events(&buffer[..length]) {
                     match (kind, code, value) {
                         (0, 0, _) => {
                             for text in wheel.iter_mut().filter_map(Option::take) {

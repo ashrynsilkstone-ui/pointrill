@@ -29,6 +29,8 @@ Im **Gerätetest** kannst du Tasten und Scrollrichtung live prüfen. Bei fehlend
 
 Der [OpenRazer Mouse Tray](https://github.com/ashrynsilkstone-ui/basilisk-v4-tray) kann Profile für das gewählte Gerät übernehmen. Unter **Spielzuordnung** kannst du optional den Dateinamen eines Spiels eintragen, etwa `cs2`. Solange der Tray läuft, übernimmt er das Profil beim Start des Spiels. Beim Beenden stellt er die Werte wieder her, die seit dem automatischen Wechsel nicht manuell geändert wurden. Exportdateien enthalten die Mauskonfiguration. Spielzuordnungen werden in Pointrill eingerichtet.
 
+Der **Polling-Test** unter **Gerätetest** zeichnet die von Linux empfangenen Bewegungsberichte und die CPU-Gesamtlast der letzten 15 Sekunden auf. Halte die Maus erst kurz still und bewege sie dann schnell hin und her. Pointrill misst die Bewegungsrate in 250-ms-Fenstern. Die CPU-Anzeige umfasst das ganze System. Der Test braucht Lesezugriff auf die Maus-Eingabeschnittstelle.
+
 ## Start unter Linux
 
 Zum Bauen brauchst du Rust ab Version 1.95. Für den Betrieb brauchst du eine Wayland- oder X11-Sitzung mit OpenGL und den OpenRazer-Treiber samt Daemon für deine Distribution. Starte OpenRazer in deiner Desktop-Sitzung und führe im Projektordner aus.

@@ -1,3 +1,5 @@
+mod polling_view;
+
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant, SystemTime};
@@ -51,6 +53,7 @@ pub struct App {
     diagnostics: String,
     daemon_error: Option<String>,
     monitor: Option<crate::diagnostics::InputMonitor>,
+    polling: polling_view::PollingView,
     file_picker: Option<Child>,
     profile_revision: Option<SystemTime>,
 }
@@ -95,6 +98,7 @@ impl App {
             diagnostics: String::new(),
             daemon_error: None,
             monitor: None,
+            polling: polling_view::PollingView::default(),
             file_picker: None,
             profile_revision: None,
         }
@@ -114,6 +118,7 @@ impl App {
     fn load(&mut self, device: Device) {
         self.busy = true;
         self.monitor = None;
+        self.polling = polling_view::PollingView::default();
         self.diagnostics.clear();
         self.preview_sent = None;
         self.preview_deadline = None;
@@ -172,6 +177,7 @@ impl App {
                             if self.devices.is_empty() {
                                 self.snapshot = None;
                                 self.monitor = None;
+                                self.polling = polling_view::PollingView::default();
                                 self.draft.clear();
                                 self.notify("Warte auf eine Maus oder einen Empfänger.", false);
                             } else if current != selected.as_ref() || current.is_none() {
@@ -194,6 +200,7 @@ impl App {
                             }
                             self.devices.clear();
                             self.monitor = None;
+                            self.polling.stop();
                             self.daemon_error = Some(message.clone());
                             self.status = Status::default();
                             self.notify(message, true);
@@ -270,6 +277,7 @@ impl App {
     fn close(&mut self) {
         if !self.closing {
             self.closing = true;
+            self.polling.stop();
             self.preview_deadline = None;
             self.notify("Beende die DPI-Vorschau …", false);
             let _ = self.worker.send.send(Request::Close);
@@ -603,6 +611,7 @@ impl App {
         }
         self.page = page;
         self.monitor = None;
+        self.polling.stop();
         match page {
             Page::Profiles => self.reload_profiles(),
             Page::Diagnostics => self.refresh_diagnostics(),
@@ -882,8 +891,13 @@ impl App {
     }
 
     fn diagnostics_view(&mut self, ui: &mut Ui) {
-        ui.label(emphasis("Gerätetest", 34.0));
-        ui.add_space(8.0);
+        if let Some(snapshot) = &self.snapshot {
+            self.polling.show(ui, &snapshot.device, self.status.polling);
+            ui.add_space(10.0);
+        } else {
+            ui.label(emphasis("Gerätetest", 29.0));
+            ui.add_space(6.0);
+        }
         if self.diagnostics.is_empty() {
             self.refresh_diagnostics();
         }
@@ -1094,6 +1108,7 @@ impl App {
 impl eframe::App for App {
     fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
         self.read_replies(context);
+        self.polling.refresh();
         self.check_profile_file();
         if let Some(monitor) = &mut self.monitor {
             monitor.poll();

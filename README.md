@@ -29,6 +29,8 @@ The **Gerätetest** (Device test) page shows button presses and scroll direction
 
 The [OpenRazer Mouse Tray](https://github.com/ashrynsilkstone-ui/basilisk-v4-tray) can apply profiles to the selected mouse. Optionally associate a profile with a game by entering its executable name, such as `cs2`. While the tray is running, it applies the profile when the game starts. When the game exits, it restores values that have not been manually changed since the switch. JSON exports contain the mouse settings. Game associations are configured locally in Pointrill.
 
+The **Polling test** in **Device test** plots movement reports received by Linux and total CPU load over the last 15 seconds. Start with the mouse still, then move it quickly back and forth. Pointrill measures the movement rate in 250 ms windows. The CPU reading covers the whole system. Direct read access to the mouse input device is required.
+
 ## Run on Linux
 
 To build Pointrill, install Rust 1.95 or later. You also need a Wayland or X11 desktop with OpenGL and the OpenRazer driver and daemon for your distribution. Start OpenRazer in your desktop session, then run from the checkout.
