@@ -257,10 +257,10 @@ fn tray_icon(size: i32, battery: Option<u8>, dpi_stage: Option<u8>) -> ksni::Ico
             let pixel = if dot || ((0.13..=0.73).contains(&mark_y) && stroke) {
                 GREEN
             } else if let Some(level) = battery
-                && (0.81..0.92).contains(&y)
-                && (0.17..0.83).contains(&x)
+                && (0.78..0.92).contains(&y)
+                && (0.15..0.85).contains(&x)
             {
-                if x - 0.17 < 0.66 * f32::from(level.min(100)) / 100.0 {
+                if x - 0.15 < 0.70 * f32::from(level.min(100)) / 100.0 {
                     charge
                 } else {
                     track
@@ -295,40 +295,31 @@ fn draw_stage(icon: &mut ksni::Icon, stage: u8) {
         [0b111, 0b101, 0b111, 0b101, 0b111],
         [0b111, 0b101, 0b111, 0b001, 0b111],
     ];
-    const PREFIX: [u8; 5] = [0b110, 0b101, 0b101, 0b101, 0b110];
-
-    if stage < 10 {
-        draw_glyph(icon, PREFIX, 10, 7, 1);
-        draw_glyph(icon, NUMERALS[usize::from(stage)], 15, 5, 2);
-        return;
-    }
-
     let digits = stage.to_string();
-    let left = ICON_GRID - 4 * digits.len() as i32;
-    if stage < 100 {
-        draw_glyph(icon, PREFIX, left - 4, 7, 1);
-    }
+    let glyph_width = if digits.len() == 1 { 5 } else { 3 };
+    let text_width = (glyph_width + 1) * digits.len() as i32 - 1;
+    let left = 16 - text_width / 2;
     for (index, digit) in digits.bytes().enumerate() {
         draw_glyph(
             icon,
             NUMERALS[usize::from(digit - b'0')],
-            left + 4 * index as i32,
-            7,
-            1,
+            left + (glyph_width + 1) * index as i32,
+            glyph_width,
         );
     }
 }
 
-fn draw_glyph(icon: &mut ksni::Icon, glyph: [u8; 5], left: i32, top: i32, scale: i32) {
+fn draw_glyph(icon: &mut ksni::Icon, glyph: [u8; 5], left: i32, width: i32) {
+    let x = |column| (left + (column * width + 1) / 3) * icon.width / ICON_GRID;
+    let y = |row| (6 + (row * 8 + 2) / 5) * icon.height / ICON_GRID;
     for (row, bits) in glyph.into_iter().enumerate() {
-        let y = top + row as i32 * scale;
+        let row = row as i32;
         for column in 0..3 {
             if bits & (0b100 >> column) == 0 {
                 continue;
             }
-            let x = left + column * scale;
-            for py in y * icon.height / ICON_GRID..(y + scale) * icon.height / ICON_GRID {
-                for px in x * icon.width / ICON_GRID..(x + scale) * icon.width / ICON_GRID {
+            for py in y(row)..y(row + 1) {
+                for px in x(column)..x(column + 1) {
                     let start = (py * icon.width + px) as usize * 4;
                     icon.data[start..start + 4].copy_from_slice(&GREEN);
                 }
@@ -542,7 +533,7 @@ mod tests {
         let original = tray_icon(22, Some(80), Some(1));
         let stage = tray_icon(22, Some(80), Some(2));
         let battery = tray_icon(22, Some(10), Some(1));
-        let split = 18 * ICON_GRID as usize * 4;
+        let split = 17 * ICON_GRID as usize * 4;
 
         assert_ne!(original.data[..split], stage.data[..split]);
         assert_eq!(original.data[split..], stage.data[split..]);
