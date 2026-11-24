@@ -193,7 +193,7 @@ impl ksni::Tray for PointrillTray {
         menu.push(MenuItem::Separator);
         menu.push(
             CheckmarkItem {
-                label: "Bei der KDE-Anmeldung starten".into(),
+                label: "Bei der Anmeldung starten".into(),
                 checked: self.view.autostart,
                 activate: Box::new(|tray: &mut PointrillTray| {
                     let _ = tray.sender.send(Action::SetAutostart(!tray.view.autostart));
@@ -346,7 +346,7 @@ pub fn run() -> Result<()> {
     }
     .assume_sni_available(true)
     .spawn()
-    .context("KDE-Tray konnte nicht gestartet werden")?;
+    .context("Pointrill-Tray konnte nicht gestartet werden")?;
     let mut session = None;
     let mut preferred = None;
     let mut windows: Vec<Child> = Vec::new();
@@ -470,13 +470,15 @@ fn autostart_path() -> Result<PathBuf> {
 }
 
 fn autostart_enabled() -> Result<bool> {
-    match read_autostart(&autostart_path()?)? {
+    let desktop = env::var("XDG_CURRENT_DESKTOP").ok();
+    let desktop = desktop.as_deref();
+    match read_autostart(&autostart_path()?, desktop)? {
         Some(enabled) => Ok(enabled),
-        None => system_autostart_enabled(),
+        None => system_autostart_enabled(desktop),
     }
 }
 
-fn system_autostart_enabled() -> Result<bool> {
+fn system_autostart_enabled(desktop: Option<&str>) -> Result<bool> {
     let directories = env::var_os("XDG_CONFIG_DIRS")
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "/etc/xdg".into());
@@ -484,32 +486,42 @@ fn system_autostart_enabled() -> Result<bool> {
         let path = directory
             .join("autostart")
             .join(format!("{TRAY_ID}.desktop"));
-        if let Some(enabled) = read_autostart(&path)? {
+        if let Some(enabled) = read_autostart(&path, desktop)? {
             return Ok(enabled);
         }
     }
     Ok(false)
 }
 
-fn read_autostart(path: &Path) -> Result<Option<bool>> {
+fn read_autostart(path: &Path, desktop: Option<&str>) -> Result<Option<bool>> {
     match fs::read_to_string(path) {
-        Ok(contents) => {
-            let hidden = contents
-                .lines()
-                .map(str::trim)
-                .skip_while(|line| *line != "[Desktop Entry]")
-                .skip(1)
-                .take_while(|line| !line.starts_with('['))
-                .any(|line| {
-                    line.split_once('=').is_some_and(|(key, value)| {
-                        key.trim() == "Hidden" && value.trim() == "true"
-                    })
-                });
-            Ok(Some(!hidden))
-        }
+        Ok(contents) => Ok(Some(autostart_entry_enabled(&contents, desktop))),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
+}
+
+fn autostart_entry_enabled(contents: &str, desktop: Option<&str>) -> bool {
+    let matches_desktop = |value: &str| {
+        desktop.is_some_and(|desktop| {
+            desktop
+                .split(':')
+                .any(|name| value.split(';').any(|entry| entry == name))
+        })
+    };
+    contents
+        .lines()
+        .map(str::trim)
+        .skip_while(|line| *line != "[Desktop Entry]")
+        .skip(1)
+        .take_while(|line| !line.starts_with('['))
+        .filter_map(|line| line.split_once('='))
+        .all(|(key, value)| match key.trim() {
+            "Hidden" => value.trim() != "true",
+            "OnlyShowIn" if desktop.is_some() => matches_desktop(value.trim()),
+            "NotShowIn" => !matches_desktop(value.trim()),
+            _ => true,
+        })
 }
 
 pub fn change_autostart(enabled: bool) -> Result<()> {
@@ -518,7 +530,7 @@ pub fn change_autostart(enabled: bool) -> Result<()> {
 
 fn write_autostart(enabled: bool, executable: &Path) -> Result<()> {
     let path = autostart_path()?;
-    if !enabled && !system_autostart_enabled()? {
+    if !enabled && !system_autostart_enabled(None)? {
         return match fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
@@ -540,7 +552,7 @@ fn write_autostart(enabled: bool, executable: &Path) -> Result<()> {
         .replace('%', "%%");
     let hidden = if enabled { "" } else { "Hidden=true\n" };
     let desktop = format!(
-        "[Desktop Entry]\nType=Application\nName=Pointrill Tray\nComment=Live mouse status and profiles\nComment[de]=Live-Status und Profile der Maus\nExec=\"{arg}\" --tray\nIcon=input-mouse\nTerminal=false\nStartupNotify=false\nOnlyShowIn=KDE;\n{hidden}"
+        "[Desktop Entry]\nType=Application\nName=Pointrill Tray\nComment=Live mouse status and profiles\nComment[de]=Live-Status und Profile der Maus\nExec=\"{arg}\" --tray\nIcon=input-mouse\nTerminal=false\nStartupNotify=false\nOnlyShowIn=KDE;GNOME;\n{hidden}"
     );
     let directory = path.parent().context("Kein Autostart-Ordner")?;
     fs::create_dir_all(directory)?;
@@ -563,6 +575,22 @@ fn write_autostart(enabled: bool, executable: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn autostart_reports_session_matches_and_respects_disabled_overrides() {
+        let packaged =
+            include_str!("../packaging/io.github.ashrynsilkstone_ui.Pointrill.Tray.desktop");
+        assert!(autostart_entry_enabled(packaged, Some("KDE")));
+        assert!(autostart_entry_enabled(packaged, Some("ubuntu:GNOME")));
+        assert!(!autostart_entry_enabled(packaged, Some("XFCE")));
+
+        let old_override = "[Desktop Entry]\nOnlyShowIn=KDE;\n";
+        assert!(autostart_entry_enabled(old_override, Some("KDE")));
+        assert!(!autostart_entry_enabled(old_override, Some("GNOME")));
+        let disabled = format!("{packaged}Hidden=true\n");
+        assert!(!autostart_entry_enabled(&disabled, Some("KDE")));
+        assert!(!autostart_entry_enabled(&disabled, Some("GNOME")));
+    }
 
     #[test]
     fn dpi_stage_and_battery_bar_update_separately() {

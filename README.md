@@ -10,23 +10,25 @@ Pointrill is a Linux desktop app for mice and receivers supported by OpenRazer. 
 - View battery and charging status, and adjust idle time and low-battery warnings where supported.
 - Preview and apply changes, save profiles, restore previous settings and switch profiles automatically when games start.
 - Test mouse input and see the received polling rate and CPU load live.
-- The KDE tray shows the DPI stage and a battery bar, applies profiles and provides an autostart toggle.
+- The tray shows the DPI stage and a battery bar, applies profiles and provides an autostart toggle.
 
 ## Installation
 
-Install and start the OpenRazer driver and daemon for your device. Download the matching 64-bit package. [Pointrill 0.4.3 downloads](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.3)
+Install and start the OpenRazer driver and daemon for your device. Download the matching 64-bit package. [Pointrill 0.4.4 downloads](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.4)
 
 | Distribution | Install command |
 | --- | --- |
-| CachyOS | `sudo pacman -U ./pointrill-0.4.3-1-x86_64.pkg.tar.zst` |
-| Fedora | `sudo dnf install ./pointrill-0.4.3-1.x86_64.rpm` |
-| Debian and Ubuntu | `sudo apt install ./pointrill_0.4.3-1_amd64.deb` |
+| CachyOS | `sudo pacman -U ./pointrill-0.4.4-1-x86_64.pkg.tar.zst` |
+| Fedora | `sudo dnf install ./pointrill-0.4.4-1.x86_64.rpm` |
+| Debian and Ubuntu | `sudo apt install ./pointrill_0.4.4-1_amd64.deb` |
 
 Open **Pointrill** from the application menu.
 
-### KDE tray and autostart
+### Tray and autostart
 
-The packages enable the tray at your next KDE Plasma login. Right-click the tray icon to change autostart for your account, or run `pointrill --enable-autostart` or `pointrill --disable-autostart`. To start the tray in the current session, run `pointrill --tray`.
+The packages start the tray at your next KDE Plasma or GNOME login. GNOME needs an enabled AppIndicator extension to show the icon and menu. Ubuntu's AppIndicators extension works for this too. [AppIndicator and KStatusNotifierItem Support](https://extensions.gnome.org/extension/615/appindicator-support/)
+
+Use the tray menu to change autostart for your account. You can also run `pointrill --enable-autostart` or `pointrill --disable-autostart`. Use `pointrill --tray` to start the tray in the current session. If you enabled autostart before 0.4.4, run `pointrill --enable-autostart` again to update your personal entry for GNOME.
 
 For a source build, use Rust 1.95 or later. Install the binary at a stable path before enabling autostart.
 

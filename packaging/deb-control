@@ -9,5 +9,5 @@ Depends: libc6 (>= 2.34), libgcc-s1, libgl1, libegl1, libwayland-client0,
  libxi6, libxrandr2
 Suggests: openrazer-daemon
 Description: Desktop settings for OpenRazer mice and receivers
- Pointrill configures OpenRazer mice and receivers. It includes a KDE tray
+ Pointrill configures OpenRazer mice and receivers. It includes a desktop tray
  with battery status, DPI stage and profile switching.

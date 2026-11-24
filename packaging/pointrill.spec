@@ -16,7 +16,7 @@ Requires:       libxkbcommon, libX11, libXcursor, libXi, libXrandr
 Suggests:       openrazer-daemon
 
 %description
-Pointrill configures OpenRazer mice and receivers. It includes a KDE tray
+Pointrill configures OpenRazer mice and receivers. It includes a desktop tray
 with battery status, DPI stage and profile switching.
 
 %install

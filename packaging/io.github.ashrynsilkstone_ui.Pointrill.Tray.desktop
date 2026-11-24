@@ -8,4 +8,4 @@ TryExec=/usr/bin/pointrill
 Icon=input-mouse
 Terminal=false
 StartupNotify=false
-OnlyShowIn=KDE;
+OnlyShowIn=KDE;GNOME;

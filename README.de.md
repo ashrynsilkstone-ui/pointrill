@@ -10,23 +10,25 @@ Pointrill ist eine Linux-Anwendung für Mäuse und Empfänger, die OpenRazer unt
 - Akkustand und Ladestatus ansehen und, sofern verfügbar, Ruhezustand und Akkuwarnung einstellen.
 - Änderungen als Vorschau prüfen und übernehmen, Profile speichern, frühere Einstellungen wiederherstellen und beim Spielstart automatisch das Profil wechseln.
 - Mauseingaben testen und die empfangene Pollingrate sowie die CPU-Last live sehen.
-- Das KDE-Tray zeigt DPI-Stufe und Akkubalken, wechselt Profile und bietet einen Schalter für den Autostart.
+- Das Tray zeigt DPI-Stufe und Akkubalken, wechselt Profile und bietet einen Schalter für den Autostart.
 
 ## Installation
 
-Installiere und starte den OpenRazer-Treiber samt Daemon für dein Gerät. Lade das passende 64-Bit-Paket herunter. [Pointrill 0.4.3 herunterladen](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.3)
+Installiere und starte den OpenRazer-Treiber samt Daemon für dein Gerät. Lade das passende 64-Bit-Paket herunter. [Pointrill 0.4.4 herunterladen](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.4)
 
 | Distribution | Installationsbefehl |
 | --- | --- |
-| CachyOS | `sudo pacman -U ./pointrill-0.4.3-1-x86_64.pkg.tar.zst` |
-| Fedora | `sudo dnf install ./pointrill-0.4.3-1.x86_64.rpm` |
-| Debian und Ubuntu | `sudo apt install ./pointrill_0.4.3-1_amd64.deb` |
+| CachyOS | `sudo pacman -U ./pointrill-0.4.4-1-x86_64.pkg.tar.zst` |
+| Fedora | `sudo dnf install ./pointrill-0.4.4-1.x86_64.rpm` |
+| Debian und Ubuntu | `sudo apt install ./pointrill_0.4.4-1_amd64.deb` |
 
 Öffne **Pointrill** im Anwendungsmenü.
 
-### KDE-Tray und Autostart
+### Tray und Autostart
 
-Die Pakete aktivieren das Tray für die nächste Anmeldung in KDE Plasma. Mit einem Rechtsklick auf das Tray-Symbol kannst du **Bei der KDE-Anmeldung starten** umschalten. Im Terminal geht das mit `pointrill --enable-autostart` oder `pointrill --disable-autostart`. Mit `pointrill --tray` startest du das Tray in der laufenden Sitzung.
+Das Tray startet bei der nächsten Anmeldung in KDE Plasma oder GNOME. In GNOME brauchst du eine aktive AppIndicator-Erweiterung für Symbol und Menü. Die in Ubuntu mitgelieferte Erweiterung funktioniert ebenfalls. [AppIndicator und KStatusNotifierItem](https://extensions.gnome.org/extension/615/appindicator-support/)
+
+Im Tray-Menü kannst du **Bei der Anmeldung starten** umschalten. Im Terminal geht das mit `pointrill --enable-autostart` oder `pointrill --disable-autostart`. Mit `pointrill --tray` startest du das Tray in der laufenden Sitzung. Wenn du den Autostart vor Version 0.4.4 selbst aktiviert hast, aktualisierst du deinen persönlichen Eintrag für GNOME mit `pointrill --enable-autostart`.
 
 Wenn du Pointrill selbst baust, brauchst du Rust ab Version 1.95. Installiere das Programm an einem festen Pfad, bevor du den Autostart aktivierst.
 
