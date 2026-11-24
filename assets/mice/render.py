@@ -3,6 +3,10 @@
 Run from the repository root: blender -b -t 8 -P assets/mice/render.py
 Pass model IDs after '--' to render a subset. Blender and ImageMagick are
 needed to regenerate illustrations. The app embeds the resulting WebP files.
+
+Each measured plan has paired left/right edge samples from nose to heel,
+normalized by shell width. The height profiles and component meshes build
+the actual surfaces from those measurements.
 """
 import json
 import math
@@ -13,9 +17,15 @@ from tempfile import TemporaryDirectory
 
 import bpy
 from mathutils import Matrix, Vector
+from mathutils.geometry import tessellate_polygon
 
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+sys.dont_write_bytecode = True
+import deck
+
+OUTLINES = json.loads((ROOT/"outlines.json").read_text())
 STATIONS = (0, .025, .10, .22, .38, .55, .70, .84, .95, .99, 1)
 # Cross-sections run from the buttons to the heel. Widths are half widths,
 # normalized against the shell width, and heights describe the centerline.
@@ -43,12 +53,12 @@ SHAPES = {
     "viper-modern": ((.07,.51,.95,.98,.90,.86,.92,1,.73,.32,.06), (.16,.34,.45,.52,.60,.80,1,.90,.51,.24,.08)),
 }
 FINISHES = {
-    "graphite": (.026, .034, .041),
-    "night": (.018, .023, .029),
+    "graphite": (.019, .022, .026),
+    "night": (.013, .016, .020),
     "black-gloss": (.021, .024, .027),
     "silver": (.14, .16, .19),
     "white": (.69, .74, .79),
-    "green": (.034, .15, .083),
+    "green": (.026, .086, .050),
     "red": (.34, .023, .032),
     "blue": (.048, .105, .24),
 }
@@ -79,6 +89,7 @@ def material(name, color, rough=.36, metal=.16, emission=0, texture=False):
     shader.inputs["Base Color"].default_value = (*color, 1)
     shader.inputs["Roughness"].default_value = rough
     shader.inputs["Metallic"].default_value = metal
+    shader.inputs["Specular IOR Level"].default_value = .22
     if emission:
         shader.inputs["Emission Color"].default_value = (*color, 1)
         shader.inputs["Emission Strength"].default_value = emission
@@ -87,8 +98,8 @@ def material(name, color, rough=.36, metal=.16, emission=0, texture=False):
         noise = nodes.new("ShaderNodeTexNoise")
         noise.inputs["Scale"].default_value = 175
         bump = nodes.new("ShaderNodeBump")
-        bump.inputs["Strength"].default_value = .20
-        bump.inputs["Distance"].default_value = .003
+        bump.inputs["Strength"].default_value = .26
+        bump.inputs["Distance"].default_value = .0016
         links.new(noise.outputs["Fac"], bump.inputs["Height"])
         links.new(bump.outputs["Normal"], shader.inputs["Normal"])
     return mat
@@ -149,24 +160,30 @@ def cylinder(name, center, radius, width, mat, rotation=(0, math.pi/2, 0)):
 
 
 class Mouse:
-    def __init__(self, spec):
+    def __init__(self, slug, spec):
         self.spec = spec
+        self.plan = OUTLINES.get(slug)
         self.width, self.height = spec["width"]/2, spec["height"]
+        self.plans = deck.plates(spec)
+        self.grips = deck.grips(spec)
         self.widths, self.heights = SHAPES[spec["shape"]]
         self.lean = spec.get("lean", 0)
         self.shelf = spec.get("shelf", 0)
         self.handed = 1 if spec.get("left_handed") else -1
         self.wheel_y = spec.get("wheel_y", .29)
         self.wheel_width = spec.get("wheel_width", .078)
+        self.wheel_x = spec.get("wheel_x", 0)
         self.finish = spec.get("finish", "graphite")
         color = FINISHES[self.finish]
-        self.shell = material("Molded shell", color, .245 if self.finish.endswith("gloss") else .38, texture=True)
-        self.base = material("Lower shell", tuple(.36*c for c in color), .44)
-        self.seam = material("Recess", (.010, .013, .015))
-        self.rubber = material("Rubber", (.022, .026, .029), .65, .04, texture=True)
-        self.metal = material("Wheel alloy", (.22, .25, .29), .26, .68)
+        self.shell = material("Molded shell", color, .31 if self.finish.endswith("gloss") else .46, texture=True)
+        self.deck = material("Click plates and palm cover", tuple(c*1.15 for c in color), .52, .06, texture=True)
+        self.base = material("Lower shell", tuple(.41*c for c in color), .47)
+        self.seam = material("Recess", (.004, .005, .007), .62)
+        self.rubber = material("Rubber", (.012, .014, .016), .71, .04, texture=True)
+        self.metal = material("Wheel alloy", (.102, .115, .127), .32, .55)
         self.keys = material("Keys", tuple(.70*c for c in color), .34, texture=True)
         self.led = material("Light pipe", LIGHTS[spec.get("light", "green")], .26, .02, .94)
+        self.wheel_housing = material("Wheel well", (.004,.005,.007), .52, .04)
 
     def span(self, t):
         return self.width * max(.02, sample(self.widths, t))
@@ -176,34 +193,46 @@ class Mouse:
         return self.height * (sample(self.heights, t) + gain * math.sin(math.pi*t)**3)
 
     def side(self, t, u):
+        if self.plan:
+            left, right = self.plan
+            i = min(int(t*(len(left)-1)), len(left)-2)
+            f = t*(len(left)-1)-i
+            lo = left[i]*(1-f)+left[i+1]*f
+            hi = right[i]*(1-f)+right[i+1]*f
+            return -self.width*(lo+hi+(hi-lo)*u)
         shelf = self.shelf * math.exp(-((t-.50)/.19)**2) * max(-u, 0)**3
         midline = .23*self.lean*math.sin(math.pi*t) - .022*self.lean
         return (midline + self.span(t)*u - shelf) * self.handed
 
     def point(self, t, u, lift=0):
         span = self.height_at(t)
-        crown = (1-min(1, abs(u))**2.25)**.58
-        z = .032 + span*(.23 + .77*crown - self.lean*u*.72)
+        crown = (1-min(1, abs(u))**2.85)**.53
+        flatness = .62 - .22*min(1, max(0,(t-.33)*3.5))
+        lean = self.lean if self.handed < 0 else -self.lean
+        z = .027 + span*(flatness + (1-flatness)*crown + lean*u*.56)
+        if self.spec["shape"] == "vertical":
+            ridge = math.exp(-((u+.13)/.42)**2)
+            z = .027+span*(.26+.74*ridge)*(.56+.44*crown)
         return (self.side(t, u), t-.5, z+lift)
-
-    def outline(self, z, scale, first=0, last=1):
-        return [(self.side(first+(last-first)*i/64, side)*scale,
-                 first+(last-first)*i/64-.5, z)
-                for side, steps in ((1, range(65)), (-1, range(64, -1, -1)))
-                for i in steps]
 
     def body(self, cutout):
         steps, across = 132, 64
         points = []
         faces = []
+        light = self.spec.get("edge", "none")
+        heel_start = self.spec.get("light_start", .56)
         for i in range(steps+1):
             t = i/steps
+            lit = light=="heel" and heel_start < t < .989 or light=="sides" and .16 < t < .90
             # Top grid, then a rounded return around the underside.
             points.extend(self.point(t, 2*j/across-1) for j in range(across+1))
-            for u, scale, z in ((1,.99,.045), (1,.92,.018), (-1,.92,.018), (-1,.99,.045)):
-                x, y, _ = self.point(t, u)
-                points.append((x*scale, y, z))
-        stride = across+5
+            for u, scale, z in ((1,.994,.046),(1,.971,.037),(1,.950,.029),(1,.920,.018),
+                                (-1,.920,.018),(-1,.950,.029),(-1,.971,.037),(-1,.994,.046)):
+                x, y, roof = self.point(t, u)
+                if lit and z in (.037,.029):
+                    scale = 1.015 if z==.037 else 1.006
+                points.append((x*scale, y, min(z, roof*.92)))
+        stride = across+9
         for i in range(steps):
             for j in range(stride):
                 t, u = (i+.5)/steps, 2*(j+.5)/across-1
@@ -212,27 +241,39 @@ class Mouse:
                 a, b = i*stride+j, i*stride+(j+1)%stride
                 faces.append((a,b,b+stride,a+stride))
         faces.extend((tuple(reversed(range(stride))), tuple(range(steps*stride,len(points)))))
-        if self.handed < 0:
+        if self.plan or self.handed < 0:
             faces = [tuple(reversed(face)) for face in faces]
         shell = mesh("Shell", points, faces, self.shell)
         shell.data.materials.append(self.base)
+        shell.data.materials.append(self.led)
         for face in shell.data.polygons:
             if all(v % stride >= across for v in face.vertices):
                 face.material_index = 1
+            # Light guide molded into the lower shell, following the casing.
+            stations = {v % stride for v in face.vertices}
+            if stations not in ({across+2,across+3},{across+6,across+7}):
+                continue
+            t = sum(points[v][1]+.5 for v in face.vertices)/len(face.vertices)
+            if (light=="heel" and heel_start < t < .989
+                    or light=="sides" and .16 < t < .90):
+                face.material_index = 2
 
     def controls(self):
         t = self.wheel_y
-        x, y, z = self.point(t, 0)
+        x, y, z = self.point(t, self.wheel_x)
         angle = self.spec.get("wheel_tilt", 0) * self.handed
         axis = Vector((math.cos(angle), 0, math.sin(angle)))
         rotation = (0, math.pi/2-angle, 0)
         self.wheel_slot(t)
         radius = self.spec.get("wheel_radius", .064)
-        center = Vector((x, y, z-radius*.46))
-        alloy = self.metal if self.spec.get("alloy") else self.keys
+        burial = .22 if self.spec["shape"] == "vertical" else .52
+        center = Vector((x, y, z-radius*burial))
+        alloy = self.metal if self.spec.get("alloy") and self.spec["shape"] != "vertical" else self.keys
         rim = self.led if self.spec.get("wheel_light") else alloy
         cylinder("Wheel edge", center, radius, self.wheel_width, rim, rotation)
-        cylinder("Wheel tread", center, radius+.004, self.wheel_width*.74, self.rubber, rotation)
+        tread_width = self.wheel_width*(.84 if self.spec.get("wheel_light") else .91)
+        cylinder("Wheel tread", center, radius+.004, tread_width, self.rubber, rotation)
+        grip = material("Wheel tread ridge", (.022,.026,.030), .64)
         for i in range(40):
             a = i*math.tau/40
             if math.cos(a) > .29:
@@ -240,68 +281,138 @@ class Mouse:
                 centerline = center + Vector((-math.sin(angle)*math.cos(a)*lift,
                                              math.sin(a)*lift, math.cos(angle)*math.cos(a)*lift))
                 stroke("Knurl", [centerline-axis*self.wheel_width*.33,
-                                  centerline+axis*self.wheel_width*.33], .0019, self.metal)
+                                  centerline+axis*self.wheel_width*.33], .00165, grip)
 
-        for i in range(self.spec.get("top_buttons", 0)):
-            t = self.wheel_y + .125 + .060*i
-            x,y,z = self.point(t, 0)
-            block("Mode button", (x,y,z+.004), (.036,.037,.015), .007, self.keys,
-                  rotation=(.40, -self.lean, 0))
+        keys = self.spec.get("mode_keys",
+                             [(self.wheel_x,self.wheel_y+.111+.048*i,.044,.034,0)
+                              for i in range(self.spec.get("top_buttons", 0))])
+        for u,t,w,l,yaw in keys:
+            x,y,z = self.point(t, u)
+            block("Mode button", (x,y,z+.006), (w,l,.018), .006, self.keys,
+                  rotation=(.28, -self.lean, yaw))
         if self.spec.get("status"):
-            x,y,z = self.point(self.wheel_y+.08, .35)
-            stroke("Status LED", [(x-.009,y,z+.004),(x+.009,y,z+.004)], .003, self.led)
+            u,t = self.spec.get("indicator", (self.wheel_x,self.wheel_y-.093))
+            x,y,z = self.point(t, u)
+            stroke("Status LED", [(x-.008,y,z+.004),(x+.008,y,z+.004)], .0027, self.led)
 
     def wheel_slot(self, t):
-        points = [self.point(t+.079*math.cos(i*math.tau/64),
-                              self.wheel_width/self.width*.66*math.sin(i*math.tau/64), .002)
-                  for i in range(64)]
-        mesh("Wheel recess", points, [tuple(range(64))], self.seam, False)
-        stroke("Wheel bezel", points+[points[0]], .003, self.keys)
+        radius = self.spec.get("slot_length", .088)
+        width = self.wheel_width/self.width*.64
+        polygon = [(self.wheel_x + math.copysign(abs(math.sin(a))**.42, math.sin(a))*width,
+                    t + math.copysign(abs(math.cos(a))**.49, math.cos(a))*radius)
+                   for a in (i*math.tau/32 for i in range(32))]
+        self.layer("Wheel recess", polygon, self.wheel_housing, .008, self.seam, rounding=False)
+
+    def layer(self, name, polygon, mat, raise_by, rim, rounding=True):
+        # Tessellate in plan view, then project short triangles onto the shell.
+        # The curved parts cast their own tiny shadows at the assembly gaps.
+        flat = [Vector((u,t,0)) for u,t in polygon]
+        if rounding:
+            flat = rounded(flat)
+        triangles = tessellate_polygon([flat])
+        points, faces, normals = [], [], []
+        cache = {}
+        def split(a,b,c,level):
+            if level:
+                ab,bc,ca = (a+b)/2,(b+c)/2,(c+a)/2
+                for tri in ((a,ab,ca),(ab,b,bc),(ca,bc,c),(ab,bc,ca)):
+                    split(*tri,level-1)
+                return
+            face = []
+            for v in (a,b,c):
+                key = (round(v.x,6),round(v.y,6))
+                if key not in cache:
+                    cache[key] = len(points)
+                    points.append(self.point(v.y,v.x,raise_by))
+                    normals.append(self.normal(v.y,v.x))
+                face.append(cache[key])
+            pa,pb,pc = (points[i] for i in face)
+            cross = (pb[0]-pa[0])*(pc[1]-pa[1])-(pb[1]-pa[1])*(pc[0]-pa[0])
+            faces.append(tuple(reversed(face)) if cross < 0 else tuple(face))
+        # Use a shared subdivision level so adjacent triangles share edges.
+        level = 5 if name in ("Palm cover","Click plates") else 4 if len(flat)>12 else 3
+        for a,b,c in triangles:
+            if isinstance(a, int):
+                a,b,c = flat[a],flat[b],flat[c]
+            split(a,b,c,level)
+        surface = mesh(name,points,faces,mat)
+        surface.data.normals_split_custom_set_from_vertices(normals)
+        if rim:
+            edge = [self.point(a.y+(b.y-a.y)*i/8,a.x+(b.x-a.x)*i/8,raise_by-.001)
+                    for a,b in zip(flat,flat[1:]+flat[:1]) for i in range(8)]
+            stroke(name+" perimeter",edge+[edge[0]],.00185,rim)
+
+    def normal(self,t,u):
+        du = Vector(self.point(t,min(.9999,u+.0004)))-Vector(self.point(t,max(-.9999,u-.0004)))
+        dt = Vector(self.point(min(1,t+.0004),u))-Vector(self.point(max(0,t-.0004),u))
+        normal = du.cross(dt).normalized()
+        return normal if normal.z > 0 else -normal
+
+    def key_label(self,label,u,t):
+        bpy.ops.object.text_add(location=self.point(t,u,.016))
+        obj = bpy.context.object
+        obj.name = "Key "+str(label)
+        obj.data.body = str(label)
+        obj.data.size = .021
+        obj.data.align_x = "CENTER"
+        obj.data.align_y = "CENTER"
+        obj.data.materials.append(self.led)
+        normal = self.normal(t,u)
+        up = Vector((0,-1,0))
+        right = up.cross(normal).normalized()
+        obj.rotation_euler = Matrix((right,normal.cross(right),normal)).transposed().to_euler()
+
+    def layers(self):
+        for i, shape in enumerate(self.plans):
+            self.layer("Palm cover" if i==2 else "Main button", shape, self.deck, .009, self.seam)
+        for shape in self.grips:
+            self.layer("Textured grip insert", shape, self.rubber, .006, self.seam)
+        if self.spec.get("split_cap"):
+            self.layer("Auxiliary leading button",
+                       ((-.87,.070),(-.51,.046),(-.57,.132),(-.88,.170),(-.94,.154)),
+                       self.keys, .009, self.seam)
 
     def seams(self):
         depth = self.spec.get("split", .43)
-        stroke("Primary split", [self.point(.018+i*(self.wheel_y-.090)/32,0,.002)
-                                 for i in range(33)], .0033, self.seam)
+        if not self.plans and self.spec["shape"] != "vertical":
+            stroke("Primary split", [self.point(.010+i*(self.wheel_y-.095)/32,self.wheel_x,.002)
+                                     for i in range(33)], .0027, self.seam)
         if self.spec.get("continuous_shell"):
             stroke("Center groove", [self.point(self.wheel_y+.07+i*.004,0,.002)
                                      for i in range(41)], .0025, self.seam)
-        else:
+        elif not self.plans and self.spec["shape"] != "vertical":
             for side in (-1,1):
                 stroke("Primary key seam", [
                     self.point(depth + .052*side*self.lean - .044*abs(u)
                                + self.spec.get("cut", 0)*u*u, u, .002)
                     for u in (side*i/39 for i in range(2,40))
                 ], .004, self.seam)
-        if self.spec.get("rail"):
+        if self.spec.get("rail") and not self.grips:
             for side in (-1, 1):
                 stroke("Side shell seam", [self.point(.19+i*.60/46, side*.94, .001)
                                            for i in range(47)], .0028, self.seam)
-        mode = self.spec.get("edge", "none")
-        if mode != "none":
-            edge = self.outline(.035, .968, .07 if mode == "sides" else .50)
-            if mode == "sides":
-                for part in (edge[13:61], edge[69:117]):
-                    stroke("Side light", part, .005, self.led)
-            else:
-                stroke("Heel light", edge, .006, self.led)
 
     def thumb_controls(self):
         count = self.spec.get("side_buttons", 2)
         z = self.height_at(.43)*.41+.04
         if count in (6, 7, 12):
-            x = self.side(.46, -1)
-            block("MMO button panel", (x*.96,-.035,z-.008), (.065,.34,.11),
-                  .024, self.rubber, rotation=(0, .57*self.handed, 0))
+            side = 1 if self.spec.get("left_handed") else -1
+            base = [(side*u,t) for u,t in ((.99,.330),(.52,.345),(.41,.429),
+                                            (.44,.627),(.53,.696),(.93,.681),(.99,.641))]
+            self.layer("MMO keypad insert",base,self.rubber,.008,self.seam)
             if count == 12:
-                positions = [(row*.073-.145, tier*.031-.032)
-                             for row in range(4) for tier in range(3)]
+                positions = [(side*(.90-col*.125), .387+row*.079-col*.010)
+                             for row in range(4) for col in range(3)]
+                du,dt = .056,.033
             else:
-                positions = [(math.sin(i*math.tau/count)*.10,
-                              math.cos(i*math.tau/count)*.047) for i in range(count)]
-            for y, dz in positions:
-                button_x = x-self.handed*(.025-.62*dz)
-                block("Thumb key", (button_x, y-.028,z+dz), (.035,.044,.024),
-                      .007, self.keys, rotation=(0, .57*self.handed, 0))
+                positions = [(side*(.71+.145*math.sin(i*math.tau/count)),
+                              .503+.105*math.cos(i*math.tau/count)) for i in range(count)]
+                du,dt = .064,.030
+            for i,(u,t) in enumerate(positions,1):
+                polygon = ((u-du,t-dt),(u+du,t-dt-.005),(u+du,t+dt),(u-du,t+dt+.005))
+                self.layer("Thumb key",polygon,self.deck,.014,self.seam)
+                if self.spec.get("numbered_keys"):
+                    self.key_label(i,u,t)
         elif count:
             for side in (-1, 1) if self.spec.get("both_sides") else (-1,):
                 for i in range(count):
@@ -334,9 +445,25 @@ class Mouse:
                     for (u,t),(ux,ty) in zip(triangle, triangle[1:]+triangle[:1])
                     for i in range(12)]
             stroke("Lattice bevel", edge+[edge[0]], .004, self.keys)
+        self.layers()
+        if self.spec["shape"] == "vertical":
+            self.layer("Central spine", ((-.35,.042),(-.26,.014),(-.09,.026),
+                                         (-.025,.080),(-.025,.578),(-.12,.626),
+                                         (-.28,.604),(-.37,.539)), self.deck,.009,self.seam)
         self.seams()
         self.controls()
         self.thumb_controls()
+
+
+def rounded(points):
+    result = []
+    for before,corner,after in zip(points[-1:]+points[:-1],points,points[1:]+points[:1]):
+        inset = min((before-corner).length,(after-corner).length,.13)*.25
+        start = corner+(before-corner).normalized()*inset
+        end = corner+(after-corner).normalized()*inset
+        for t in (0,.33,.67,1):
+            result.append(start*(1-t)**2+corner*(2*t*(1-t))+end*t*t)
+    return result
 
 
 def triangle_contains(point, triangle):
@@ -403,29 +530,29 @@ def studio():
     bpy.ops.object.delete(use_global=False)
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
-    scene.cycles.samples = 12
+    scene.cycles.samples = 28
     scene.cycles.use_denoising = True
     scene.cycles.max_bounces = 4
     scene.render.film_transparent = True
-    scene.render.resolution_x = 412
-    scene.render.resolution_y = 512
+    scene.render.resolution_x = 484
+    scene.render.resolution_y = 620
     scene.render.resolution_percentage = 100
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGBA"
     scene.view_settings.view_transform = "AgX"
     world = scene.world
     world.use_nodes = True
-    world.node_tree.nodes.get("Background").inputs[0].default_value = (.32,.38,.43,1)
-    world.node_tree.nodes.get("Background").inputs[1].default_value = .36
+    world.node_tree.nodes.get("Background").inputs[0].default_value = (.35,.37,.39,1)
+    world.node_tree.nodes.get("Background").inputs[1].default_value = .26
     bpy.ops.object.camera_add()
     scene.camera = bpy.context.object
     scene.camera.data.type = "ORTHO"
     scene.camera.data.ortho_scale = 1.21
     for name, position, size, energy, color in (
-        ("White softbox", (-1,-1.0,2.25), 1.35, 120, (.84,.91,1)),
-        ("Tall bounce", (1.25,-.28,1.4), 1.25, 68, (.91,.96,1)),
-        ("Mint rim", (.63,1.0,.91), .93, 54, (.63,1,.78)),
-        ("Rim fill", (-.91,.78,.77), .77, 23, (.70,.82,1)),
+        ("Softbox", (-1.02,-.58,1.86), 1.85, 80, (.95,.97,1)),
+        ("Broad fill", (1.12,-.28,1.32), 1.72, 44, (.95,.98,1)),
+        ("Heel rim", (.79,1.05,.59), .61, 37, (.90,.95,1)),
+        ("Soft edge", (-.88,.72,.67), .91, 14, (.84,.91,1)),
     ):
         bpy.ops.object.light_add(type="AREA", location=position)
         light = bpy.context.object
@@ -447,17 +574,17 @@ def render(models):
             bpy.data.orphans_purge()
             camera = scene.camera
             handed = -1 if spec.get("left_handed") else 1
-            mouse_side = 1.84 if spec.get("side_buttons", 0) > 5 else .96
-            camera.location = (mouse_side*handed, -.59, 2.30)
+            mouse_side = .91 if spec.get("side_buttons", 0) > 5 else .39
+            camera.location = (mouse_side*handed, -.46, 2.90)
             back = (camera.location-Vector((0,0,.14))).normalized()
-            right = Vector((-.25*handed,-1,0)).cross(back).normalized()
+            right = Vector((-.075*handed,-1,0)).cross(back).normalized()
             camera.rotation_euler = Matrix((right, back.cross(right), back)).transposed().to_euler()
             if spec["shape"] == "receiver":
                 dongle()
             elif spec["shape"] in ("dock", "dock-pro"):
                 dock(spec["shape"] == "dock-pro")
             else:
-                Mouse(spec).draw()
+                Mouse(slug,spec).draw()
             scene.render.filepath = str(png)
             bpy.ops.render.render(write_still=True)
             subprocess.run(["magick", str(png), "-trim", "+repage",

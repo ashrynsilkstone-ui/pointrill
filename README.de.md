@@ -4,7 +4,7 @@
 
 Pointrill ist eine native Rust-App für Mäuse und Empfänger unter OpenRazer. Sie erkennt Geräte beim Start und beim Anschließen. Pro Gerät zeigt sie die Einstellungen an, die der jeweilige OpenRazer-Treiber bereitstellt.
 
-Die Geräteansicht zeigt je nach USB-Produkt-ID eine eigene 3D-Illustration von Pointrill. Die Bilder sind in der App enthalten und funktionieren offline. Kabel- und Funkvarianten derselben Maus verwenden dieselbe Illustration. Der [Katalog](assets/mice/catalog.json) deckt die OpenRazer-Mäuseliste und den Testbuild für die Basilisk V4 Pro ab. Das [Blender-Skript](assets/mice/render.py) erzeugt die Bilder aus dem Katalog.
+Die Geräteansicht zeigt je nach USB-Produkt-ID eine eigene 3D-Illustration von Pointrill. Die Bilder sind in der App enthalten und funktionieren offline. Kabel- und Funkvarianten derselben Maus verwenden dieselbe Illustration. Der [Katalog](assets/mice/catalog.json) deckt die OpenRazer-Mäuseliste und den Testbuild für die Basilisk V4 Pro ab. Das [Blender-Skript](assets/mice/render.py) erzeugt die Bilder anhand [vermessener Konturen](assets/mice/outlines.json) und modellierter Gehäuse, Tasten, Räder und Griffflächen.
 
 - **Sensor** enthält DPI, DPI-Stufen und Pollingrate.
 - **Beleuchtung** enthält die verfügbaren Effekte und Helligkeitsregler pro Zone.

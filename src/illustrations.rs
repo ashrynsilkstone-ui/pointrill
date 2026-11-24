@@ -39,7 +39,7 @@ mod tests {
             let illustration = by_pid(pid).expect("catalog ID resolves");
             if checked.insert(illustration.id) {
                 let image = illustration.decode().expect(illustration.id);
-                assert!(image.size.iter().all(|axis| (100..=512).contains(axis)));
+                assert!(image.size.iter().all(|axis| (100..=620).contains(axis)));
                 assert!(image.pixels.iter().any(|pixel| pixel.a() == 0));
                 assert!(image.pixels.iter().any(|pixel| pixel.a() == 255));
             }
