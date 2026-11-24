@@ -2,86 +2,33 @@
 
 [English](README.md)
 
-Pointrill ist eine native Rust-App für Mäuse und Empfänger unter OpenRazer. Sie erkennt Geräte beim Start und beim Anschließen. Pro Gerät zeigt sie die Einstellungen an, die der jeweilige OpenRazer-Treiber bereitstellt.
+Pointrill ist eine Linux-Anwendung für Mäuse und Empfänger, die OpenRazer unterstützt. Es erkennt angeschlossene Geräte und zeigt die jeweils verfügbaren Einstellungen.
 
-Die Geräteübersicht zeigt das angeschlossene Modell, die Verbindungsart und die von OpenRazer bereitgestellten Live-Werte für Akku, DPI und Pollingrate. Der übrige Platz steht für die Geräteeinstellungen zur Verfügung.
+## Funktionen
 
-- **Sensor** enthält DPI, DPI-Stufen und Pollingrate.
-- **Beleuchtung** enthält die verfügbaren Effekte und Helligkeitsregler pro Zone.
-- **Scrollrad** enthält die Radfunktionen des Geräts. Bei der Basilisk V4 Pro durchläuft die belegte Taste die gewählten Modi. Smart Reel und Scrollbeschleunigung stehen bei Kombinationen mit Freilauf zur Verfügung.
-- **Akku und Dongle** zeigen Ladezustand, Ruhezustand, Akkuwarnung und unterstützte Status-LEDs.
-- **Profile** speichert Einstellungen pro Mausmodell. Kabel und Empfänger können dieselbe Sammlung verwenden, wenn OpenRazer sie als dasselbe Modell erkennt.
-- **Gerätetest** zeigt USB-Erkennung, OpenRazer-Status, Zugriff und die aktive DPI-Stufe. Der Diagnosebericht ist kopierbar.
+- DPI-Stufen, Pollingrate, Beleuchtungszonen, Scrollradmodi und unterstützte Empfänger-LEDs einstellen. Smart Reel und Scrollbeschleunigung setzen eine Modusauswahl mit Freilauf voraus.
+- Akkustand und Ladestatus ansehen und, sofern verfügbar, Ruhezustand und Akkuwarnung einstellen.
+- Änderungen als Vorschau prüfen und übernehmen, Profile speichern, frühere Einstellungen wiederherstellen und beim Spielstart automatisch das Profil wechseln.
+- Mauseingaben testen und die empfangene Pollingrate sowie die CPU-Last live sehen.
+- Das KDE-Tray zeigt DPI-Stufe und Akkubalken, wechselt Profile und bietet einen Schalter für den Autostart.
 
-Die Viper V4 Pro erscheint als Maus über USB (`1532:00E5`) oder mit ihrem HyperSpeed-Dongle (`1532:00E6`). Mit angeschlossenem Empfänger lassen sich im Reiter **Dongle** alle drei LEDs einzeln auf Aus, Akkustand, Verbindungsqualität, Pollingrate oder DPI-Stufe stellen. Pointrill verwendet dafür nach Möglichkeit OpenRazer und kann bei vorhandenem Zugriff auch die USB-Steuerschnittstelle des Empfängers nutzen. [OpenRazer-Geräteunterstützung](https://github.com/openrazer/openrazer/pull/2751) · [Messdaten zu den LED-Modi](https://github.com/openrazer/openrazer/issues/2760)
+## Installation
 
-## Vorschau und Übernehmen
+Installiere und starte den OpenRazer-Treiber samt Daemon für dein Gerät. Lade das passende 64-Bit-Paket herunter. [Pointrill 0.4.3 herunterladen](https://github.com/ashrynsilkstone-ui/pointrill/releases/tag/v0.4.3)
 
-Änderungen erscheinen sofort im Fenster. Bei der Basilisk V4 Pro mit HID-Zugriff lässt sich auch die DPI direkt am Sensor vorführen. Beim Verwerfen oder normalen Schließen stellt die App den ursprünglichen DPI-Wert wieder her, sofern die Maus erreichbar ist und noch den Vorschauwert meldet.
-
-Erst **Übernehmen** schreibt den Entwurf über die Speicherbefehle des Geräts oder über OpenRazer. Welche Werte nach dem Abziehen erhalten bleiben, hängt vom Gerät und Treiber ab. Pointrill liest die übernommenen Werte zurück und versucht bei einem Abbruch, bereits geänderte Werte wiederherzustellen.
-
-## Profile und Gerätetest
-
-Speichere unter **Profile** die aktuellen Geräteeinstellungen. **Änderungen ansehen** zeigt Ziel und Ausgangswert vor dem Übernehmen. **Letzten Stand wiederherstellen** lädt den Stand vor der letzten manuellen Änderung an der gewählten Verbindung in die Vorschau. JSON-Dateien lassen sich importieren und exportieren. Pointrill zeigt Werte an, die der gewählte Anschluss nicht unterstützt.
-
-Im **Gerätetest** kannst du Tasten und Scrollrichtung live prüfen. Bei fehlendem Zugriff auf Linux-Eingabeereignisse kannst du Klicks und Scrollen im Testfeld prüfen. Unterstützte LED-Zonen leuchten beim Test zwei Sekunden und erhalten danach ihre vorherigen Werte.
-
-Das Pointrill-Tray kann Profile für das gewählte Gerät übernehmen. Unter **Spielzuordnung** kannst du optional den Dateinamen eines Spiels eintragen, etwa `cs2`. Solange der Tray läuft, übernimmt er das Profil beim Start des Spiels. Beim Beenden stellt er die Werte wieder her, die seit dem automatischen Wechsel nicht manuell geändert wurden. Exportdateien enthalten die Mauskonfiguration. Spielzuordnungen werden in Pointrill eingerichtet.
-
-Der **Polling-Test** unter **Gerätetest** zeichnet die von Linux empfangenen Bewegungsberichte und die CPU-Gesamtlast der letzten 15 Sekunden auf. Halte die Maus erst kurz still und bewege sie dann schnell hin und her. Pointrill misst die Bewegungsrate in 250-ms-Fenstern. Die CPU-Anzeige umfasst das ganze System. Der Test braucht Lesezugriff auf die Maus-Eingabeschnittstelle.
-
-## Installation unter Linux
-
-Unter [GitHub Releases](https://github.com/ashrynsilkstone-ui/pointrill/releases) findest du die Pakete für 64-Bit-Prozessoren von Intel und AMD. Lade die Datei für deine Distribution herunter.
-
-| Distribution | Pointrill 0.4.3 installieren |
+| Distribution | Installationsbefehl |
 | --- | --- |
 | CachyOS | `sudo pacman -U ./pointrill-0.4.3-1-x86_64.pkg.tar.zst` |
 | Fedora | `sudo dnf install ./pointrill-0.4.3-1.x86_64.rpm` |
 | Debian und Ubuntu | `sudo apt install ./pointrill_0.4.3-1_amd64.deb` |
 
-Die Pakete fügen Pointrill zum Anwendungsmenü hinzu. Das Tray startet bei der nächsten Anmeldung in KDE Plasma. Im Tray-Menü kannst du den Autostart für dein Konto abschalten. Installiere und starte einen passenden OpenRazer-Treiber samt Daemon separat. Falls du Pointrill bereits unter `~/.local/bin` installiert hast, prüfe, ob ein eigener Menü- oder Autostart-Eintrag noch auf diese Kopie verweist.
+Öffne **Pointrill** im Anwendungsmenü. Das Tray startet bei der nächsten Anmeldung in KDE Plasma.
 
-### Aus dem Quellcode bauen
-
-Zum Bauen brauchst du Rust ab Version 1.95. Für den Betrieb brauchst du eine Wayland- oder X11-Sitzung mit OpenGL und den OpenRazer-Treiber samt Daemon für deine Distribution. Starte OpenRazer in deiner Desktop-Sitzung und führe im Projektordner aus.
+Einige Einstellungen der Basilisk V4 Pro und Viper V4 Pro benötigen direkten USB-Zugriff. Falls der Zugriff fehlt, installiere die optionale Regel und stecke das Gerät neu ein.
 
 ```sh
-cargo run --locked --release
-```
-
-## KDE-Tray und Autostart
-
-Ein Klick auf das Pointrill-Symbol öffnet das Hauptfenster. Das Symbol zeigt die DPI-Stufe als Zahl und den Akkustand als Balken, soweit verfügbar. Der Tooltip zeigt die ausgewählte Maus sowie Akkustand, aktive DPI-Stufe und Pollingrate, soweit verfügbar. Im Kontextmenü kannst du die Maus wählen, Profile übernehmen, den Polling-Test öffnen und den Autostart umschalten. Beim Schließen des Einstellungsfensters bleibt das Tray aktiv.
-
-Wenn du Pointrill selbst gebaut hast, installiere es an einem festen Pfad, aktiviere den Autostart und starte das Tray für die laufende Sitzung.
-
-```sh
-cargo build --locked --release
-install -Dm755 target/release/pointrill ~/.local/bin/pointrill
-~/.local/bin/pointrill --enable-autostart
-~/.local/bin/pointrill --tray
-```
-
-Die aktive DPI-Stufe und die Pollingrate wählst du über direkte Tasten. Klick auf einen DPI-Wert, um ihn einzugeben, oder ziehe ihn, um ihn zu ändern. Mit `cargo run --locked -- --probe` listest du erkannte Geräte und ihre verfügbaren Einstellungen auf.
-
-
-Die flüchtige DPI-Vorschau und die zusätzlichen Radfunktionen der Basilisk V4 Pro sowie der LED-Zugriff für den Viper-V4-Pro-Dongle nutzen USB-Schnittstelle 03. Fehlt der Zugriff, installiere die optionale Regel und stecke das Gerät neu ein.
-
-```sh
-sudo install -Dm644 packaging/69-pointrill.rules /etc/udev/rules.d/69-pointrill.rules
+sudo install -Dm644 /usr/share/doc/pointrill/69-pointrill.rules /etc/udev/rules.d/69-pointrill.rules
 sudo udevadm control --reload-rules
 ```
 
-Die Pakete legen dieselbe Regel unter `/usr/share/doc/pointrill/69-pointrill.rules` ab.
-
-## Teststand
-
-Privater Teststand. Die Basilisk V4 Pro wurde unter CachyOS über HyperSpeed geprüft. Bei der DPI-Vorschau und beim Verwerfen blieben die gespeicherten Stufen erhalten. Änderungen der Pollingrate erreichten die Maus erst bei **Übernehmen**. Danach wurde der Ausgangswert wiederhergestellt. Der OpenRazer-Simulator lieferte 123 Maus-Endpunkte, die Pointrill alle erkannte. Dazu gehörten die Viper V4 Pro per Kabel und per Empfänger. Beim Hardwaretest unter CachyOS wurden alle drei LED-Modi des Viper-V4-Pro-Dongles ausgelesen, ein Modus über **Übernehmen** geändert und die ursprünglichen Einstellungen wiederhergestellt.
-
-Pointrill 0.3.0 wurde außerdem mit dem HyperSpeed-Empfänger der Basilisk V4 Pro (`1532:00E3`) und OpenRazer-Build `31453438` geprüft. Das Testprofil stellte die Pollingrate auf 500 Hz und den Unterboden auf statisch Orange bei 53 %. Die automatische Sicherung stellte 1000 Hz, den Effekt **Aus** und den ursprünglichen Helligkeitswert von 1 % wieder her. Pollingrate und Helligkeit wurden aus dem Treiber ausgelesen, der Effekt wurde über OpenRazer geprüft. Die Smart-Reel-Empfindlichkeit blieb auf Stufe 3. Pointrill meldete sie beim Wiederherstellen als übersprungen.
-
-```sh
-cargo test --locked
-```
+Aus dem Quellcode startest du Pointrill mit `cargo run --locked --release` und Rust ab Version 1.95.
